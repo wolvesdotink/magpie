@@ -62,6 +62,12 @@ pub struct UserSettings {
     /// or whisper.cpp update.
     #[serde(default)]
     pub coreml_disabled_for_models: Vec<String>,
+    /// Whether the streaming-preview worker emits live partial captions
+    /// while recording. When false, only the final transcript on stop runs.
+    /// Defaults to false (simpler, lower CPU, fewer moving parts). Existing
+    /// users without this field in `settings.json` also default to false.
+    #[serde(default)]
+    pub streaming_preview: bool,
 }
 
 impl Default for UserSettings {
@@ -85,6 +91,7 @@ impl Default for UserSettings {
             vocabulary_learning: true,
             setup_complete: false,
             coreml_disabled_for_models: Vec::new(),
+            streaming_preview: false,
         }
     }
 }

@@ -13,6 +13,14 @@ use crate::state::AppState;
 use crate::transcription::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
 use crate::transcription::postprocess;
 use crate::transcription::streaming;
+
+/// Whisper.cpp returns `GenericError(-6)` ("failed to encode") on a CoreML
+/// encoder that loaded but cannot run — the same signature `self_test` looks
+/// for. This is the runtime fallback's trigger predicate.
+fn is_coreml_encode_failure<E: std::fmt::Display>(e: &E) -> bool {
+    let s = e.to_string();
+    s.contains("GenericError(-6)") || s.contains("failed to encode")
+}
 use crate::overlay;
 use crate::tray::{self, TrayState};
 use crate::vocabulary::{VocabularyEntry, VocabularySource};
@@ -54,19 +62,27 @@ pub async fn start_recording(
     // Spawn the streaming-preview worker. It will poll the audio buffer
     // every ~1.5s and emit PARTIAL_TRANSCRIPTION events the overlay can
     // render as a live caption. Skip if no backend is loaded — there's
-    // nothing to decode against.
+    // nothing to decode against — or if the user has disabled the live
+    // preview in Settings (default off; final-on-stop is unaffected).
     let backend_present = state
         .backend
         .lock()
         .map(|g| g.is_some())
         .unwrap_or(false);
-    if backend_present {
+    let streaming_enabled = state
+        .settings
+        .lock()
+        .map(|s| s.streaming_preview)
+        .unwrap_or(false);
+    if backend_present && streaming_enabled {
         let handle = streaming::spawn_streaming_worker(app.clone(), state_arc.clone());
         if let Ok(mut slot) = state.streaming_handle.lock() {
             *slot = Some(handle);
         }
-    } else {
+    } else if !backend_present {
         log::debug!("Streaming worker not started: no backend loaded");
+    } else {
+        log::debug!("Streaming worker not started: live preview disabled in settings");
     }
 
     // Spawn amplitude emitter thread (20Hz = every 50ms)
@@ -208,7 +224,35 @@ pub async fn stop_recording(
                 initial_prompt: prompt_ref,
                 mode: TranscribeMode::Final,
             };
-            match asr_backend.transcribe(&resampled, &opts, &cancel) {
+            // Runtime CoreML fallback. The load-time self_test() is supposed
+            // to catch broken encoders before any real dictation, but on some
+            // machines the failure mode only surfaces on real audio (logs:
+            // model loads, self-test passes, every real transcribe hits
+            // GenericError(-6)). If that happens we quarantine the encoder,
+            // hot-swap a Metal-only backend into state.backend, and retry
+            // once so the user's first dictation still completes.
+            let initial = asr_backend.transcribe(&resampled, &opts, &cancel);
+            let transcribe_result = match initial {
+                Err(e) if is_coreml_encode_failure(&e) => {
+                    log::warn!(
+                        "Final transcribe hit CoreML encode failure ({}); \
+                         quarantining encoder and retrying on Metal-only backend",
+                        e
+                    );
+                    match crate::quarantine_and_reload_metal_only(&app_clone, &state_arc) {
+                        Ok(new_backend) => new_backend.transcribe(&resampled, &opts, &cancel),
+                        Err(re) => {
+                            log::error!(
+                                "Backend reload after runtime quarantine failed: {}",
+                                re
+                            );
+                            Err(e) // surface the original error to the UI
+                        }
+                    }
+                }
+                other => other,
+            };
+            match transcribe_result {
                 Ok(out) => {
                     let raw_text = out.text;
                     let duration_ms = out.duration_ms;

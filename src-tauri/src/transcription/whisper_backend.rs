@@ -113,22 +113,33 @@ impl WhisperBackend {
         Ok(Self { ctx })
     }
 
-    /// Run a 1 s silence buffer through the encode+decode pipeline so we
+    /// Run a 2 s 220 Hz sine probe through the encode+decode pipeline so we
     /// surface broken CoreML encoders before the user hits one mid-dictation.
     /// Whisper-rs has no API to disable CoreML alone (`use_gpu` gates Metal
     /// too) so a runtime check is the only way to catch the case where
     /// `whisper_coreml_init` succeeds but `whisper_coreml_encode` fails — the
     /// `GenericError(-6)` we see on macOS 26.4 / M1 Max despite a
     /// structurally-valid `.mlmodelc` on disk.
+    ///
+    /// An earlier version of this probe used 1 s of pure silence; in practice
+    /// that passes on broken machines (silence has trivially predictable mel
+    /// features and the CoreML encoder takes a fast path that doesn't exercise
+    /// the failing kernels). A low-amplitude pure tone has real spectral
+    /// energy distributed across mel bins and reliably reproduces the -6.
     pub fn self_test(&self) -> Result<(), SelfTestError> {
-        let silence = vec![0.0f32; WHISPER_SAMPLE_RATE as usize];
+        let len = (WHISPER_SAMPLE_RATE as usize) * 2;
+        let mut probe = Vec::with_capacity(len);
+        for i in 0..len {
+            let t = i as f32 / WHISPER_SAMPLE_RATE as f32;
+            probe.push((2.0 * std::f32::consts::PI * 220.0 * t).sin() * 0.1);
+        }
         let opts = TranscribeOptions {
             language: None,
             initial_prompt: None,
             mode: TranscribeMode::PartialPreview,
         };
         let cancel = CancellationToken::new();
-        match self.transcribe(&silence, &opts, &cancel) {
+        match self.transcribe(&probe, &opts, &cancel) {
             Ok(_) => Ok(()),
             Err(e) => {
                 let msg = e.to_string();

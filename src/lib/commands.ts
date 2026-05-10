@@ -61,6 +61,9 @@ export interface UserSettings {
   selectedCorrectionModel: string | null;
   vocabularyLearning: boolean;
   setupComplete: boolean;
+  /** Whether the streaming-preview worker emits live partial captions while
+   *  recording. Default false. */
+  streamingPreview: boolean;
 }
 
 export interface VocabularyEntry {

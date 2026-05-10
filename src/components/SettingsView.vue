@@ -48,6 +48,7 @@ const {
   updateRemoveFillers,
   updateSelfCorrection,
   updateVocabularyLearning,
+  updateStreamingPreview,
   updateSelectedCorrectionModel,
   updateSelectedModel,
 } = useSettings();
@@ -930,6 +931,29 @@ const currentLanguageLabel = computed(() => {
               class="toggle-switch flex-shrink-0"
               :class="settings?.removeFillers ? 'toggle-on' : 'toggle-off'"
               @click="updateRemoveFillers(!settings?.removeFillers)"
+            >
+              <div class="toggle-thumb" />
+            </button>
+          </div>
+
+          <!-- Live partial-caption preview while recording -->
+          <div
+            class="flex items-center justify-between p-2.5 rounded-lg
+                   bg-panel border border-edge mt-2"
+          >
+            <div class="flex flex-col min-w-0 mr-3">
+              <span class="text-[12px] font-semibold text-ink">
+                Live preview while recording
+              </span>
+              <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
+                Show partial captions in the overlay as you dictate (extra CPU
+                load; final transcript on stop is unaffected)
+              </span>
+            </div>
+            <button
+              class="toggle-switch flex-shrink-0"
+              :class="settings?.streamingPreview ? 'toggle-on' : 'toggle-off'"
+              @click="updateStreamingPreview(!settings?.streamingPreview)"
             >
               <div class="toggle-thumb" />
             </button>

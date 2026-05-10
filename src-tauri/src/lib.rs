@@ -810,6 +810,58 @@ pub async fn reload_backend_after_backfill_public(
     reload_backend_after_backfill(app, state, model_id, path).await;
 }
 
+/// Runtime CoreML recovery used by `commands.rs::stop_recording` when the
+/// final-pass transcribe hits a `GenericError(-6)` despite a self-test that
+/// passed at load. Quarantines the encoder, reloads the model Metal-only,
+/// stores the fresh backend in `state.backend`, and returns the new `Arc` so
+/// the caller can retry the transcribe immediately.
+///
+/// Synchronous on purpose — it runs inside the `spawn_blocking` that owns
+/// the final-pass transcribe call, so an `async fn` would force the caller
+/// to bridge to the runtime mid-decode for no benefit. The whisper-load
+/// thread inside `load_with_self_test` already isolates FFI panics.
+pub(crate) fn quarantine_and_reload_metal_only(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+) -> Result<LoadedBackend, String> {
+    let model_id = state
+        .settings
+        .lock()
+        .map_err(|_| "settings mutex poisoned".to_string())?
+        .selected_model
+        .clone()
+        .ok_or_else(|| "no model selected".to_string())?;
+    let path = state
+        .current_model_path
+        .lock()
+        .map_err(|_| "current_model_path mutex poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| "no current model path".to_string())?;
+
+    quarantine_encoder(app, state, &model_id, &path);
+
+    // Drop the broken-encoder backend before reloading Metal-only so the
+    // WhisperContext destructor runs before we build a new one against the
+    // same `.bin` file. (The Arc inside state.backend may still be held by
+    // the caller's local clone; that's fine — that one is about to be
+    // discarded for the retry.)
+    if let Ok(mut slot) = state.backend.lock() {
+        *slot = None;
+    }
+
+    let (backend, _self_test) = load_with_self_test(&path)
+        .map_err(|e| format!("reload after runtime quarantine failed: {}", e))?;
+
+    if let Ok(mut slot) = state.backend.lock() {
+        *slot = Some(backend.clone());
+    }
+    log::info!(
+        "Backend reloaded for {} (Metal-only after runtime quarantine)",
+        model_id
+    );
+    Ok(backend)
+}
+
 /// Remove leftover `.downloading` temp files from interrupted downloads
 fn cleanup_stale_downloads() {
     let dir = match models::storage::models_dir() {

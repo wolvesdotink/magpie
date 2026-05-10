@@ -109,6 +109,13 @@ export function useSettings() {
     await persist();
   }
 
+  /** Toggle live partial-caption preview while recording */
+  async function updateStreamingPreview(enabled: boolean) {
+    if (!settings.value) return;
+    settings.value = { ...settings.value, streamingPreview: enabled };
+    await persist();
+  }
+
   /** Mark setup wizard as complete */
   async function updateSetupComplete(completed: boolean) {
     if (!settings.value) return;
@@ -152,6 +159,7 @@ export function useSettings() {
     updateRemoveFillers,
     updateSelfCorrection,
     updateVocabularyLearning,
+    updateStreamingPreview,
     updateSetupComplete,
     updateSelectedCorrectionModel,
     updateSelectedModel,
