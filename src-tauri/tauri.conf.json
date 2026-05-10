@@ -1,0 +1,97 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-utils/schema.json",
+  "productName": "Magpie",
+  "version": "0.1.0",
+  "identifier": "com.magpie.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Magpie",
+        "width": 320,
+        "height": 480,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
+      },
+      {
+        "label": "overlay",
+        "url": "overlay.html",
+        "width": 160,
+        "height": 44,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false
+      },
+      {
+        "label": "settings",
+        "url": "settings.html",
+        "width": 400,
+        "height": 580,
+        "minWidth": 360,
+        "minHeight": 400,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "focus": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' asset: https://asset.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Open source voice-to-text for macOS.",
+    "longDescription": "Magpie is a local-first voice-to-text desktop app for macOS. Hold Fn (or your shortcut) to dictate; transcription runs entirely on-device with Whisper.",
+    "copyright": "Copyright (c) 2026 Wolves Software. All rights reserved.",
+    "publisher": "Wolves Software",
+    "homepage": "https://wolves.ink",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "13.0",
+      "dmg": {
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 }
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzMzZDNjRDRDE5MUE3OUUKUldTZXA1SFJUTVkyb3dvUUVKdnEwQjEyOVZnbjZPaFJoQmMrR2V5Um9HeHAyMW9jUmhIcFZ0c0kK",
+      "endpoints": [
+        "https://github.com/wolvesdotink/magpie/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

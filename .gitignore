@@ -1,0 +1,30 @@
+# Operating system noise
+.DS_Store
+Thumbs.db
+
+# Editor scratch
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+
+# Vite/Vue build output
+/dist/
+
+# Rust / Tauri
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Updater signing keys — must NEVER be committed.
+# Run `bun tauri signer generate -w .secrets/updater.key` to create them.
+/.secrets/
+
+# Build/release scratch
+/release/
+
+# Misc
+magpie-debug.log
+*.log

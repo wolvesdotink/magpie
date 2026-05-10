@@ -1,0 +1,126 @@
+import { ref, onMounted, onUnmounted } from "vue";
+import { getAppState } from "@/lib/commands";
+import {
+  onRecordingStarted,
+  onRecordingStopped,
+  onTranscriptionStarted,
+  onTranscriptionComplete,
+  onTranscriptionError,
+  onAppStateChanged,
+  onCorrectionStarted,
+  onCorrectionComplete,
+  onAudioAmplitude,
+  type TranscriptionResult,
+  type AudioAmplitudePayload,
+} from "@/lib/events";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+
+export function useAppState() {
+  const recording = ref(false);
+  const processing = ref(false);
+  const hasModel = ref(false);
+  const lastTranscription = ref("");
+  const correcting = ref(false);
+  const error = ref<string | null>(null);
+  const transitionSource = ref<'idle' | 'processing' | null>(null);
+  const recordingGeneration = ref(0);
+  const amplitude = ref(0);
+
+  const unlisteners: UnlistenFn[] = [];
+
+  onMounted(async () => {
+    // Get initial state
+    try {
+      const state = await getAppState();
+      recording.value = state.recording;
+      processing.value = state.processing;
+      hasModel.value = state.hasModel;
+      lastTranscription.value = state.lastTranscription;
+    } catch (e) {
+      console.error("Failed to get app state:", e);
+    }
+
+    // Listen for state changes
+    unlisteners.push(
+      await onRecordingStarted(() => {
+        transitionSource.value = processing.value ? 'processing' : 'idle';
+        recording.value = true;
+        processing.value = false;
+        error.value = null;
+        recordingGeneration.value++;
+      }),
+    );
+
+    unlisteners.push(
+      await onRecordingStopped(() => {
+        recording.value = false;
+        amplitude.value = 0;
+      }),
+    );
+
+    unlisteners.push(
+      await onTranscriptionStarted(() => {
+        processing.value = true;
+      }),
+    );
+
+    unlisteners.push(
+      await onCorrectionStarted(() => {
+        correcting.value = true;
+      }),
+    );
+
+    unlisteners.push(
+      await onCorrectionComplete(() => {
+        correcting.value = false;
+      }),
+    );
+
+    unlisteners.push(
+      await onTranscriptionComplete((result: TranscriptionResult) => {
+        processing.value = false;
+        correcting.value = false;
+        lastTranscription.value = result.text;
+      }),
+    );
+
+    unlisteners.push(
+      await onTranscriptionError((err) => {
+        processing.value = false;
+        correcting.value = false;
+        error.value = err.error;
+      }),
+    );
+
+    unlisteners.push(
+      await onAudioAmplitude((data: AudioAmplitudePayload) => {
+        amplitude.value = data.amplitude;
+      }),
+    );
+
+    unlisteners.push(
+      await onAppStateChanged((state) => {
+        recording.value = state.recording;
+        processing.value = state.processing;
+        hasModel.value = state.hasModel;
+        lastTranscription.value = state.lastTranscription;
+      }),
+    );
+  });
+
+  onUnmounted(() => {
+    unlisteners.forEach((unlisten) => unlisten());
+  });
+
+  return {
+    recording,
+    processing,
+    correcting,
+    hasModel,
+    lastTranscription,
+    error,
+    transitionSource,
+    recordingGeneration,
+    amplitude,
+  };
+}

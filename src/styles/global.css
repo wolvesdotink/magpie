@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+/* ─── Theme: Warm Studio ─────────────────────────────────────────── */
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+
+  /* Surface palette — warm charcoal */
+  --color-canvas: #131211;
+  --color-panel: #1b1917;
+  --color-raised: #242220;
+  --color-hover: #2c2a27;
+  --color-subtle: #353230;
+
+  /* Foreground / text */
+  --color-ink: #ede8e2;
+  --color-ink-muted: #9e978f;
+  --color-ink-faint: #635d56;
+
+  /* Borders */
+  --color-edge: #332f2b;
+  --color-edge-strong: #443f3a;
+
+  /* Accent — warm gold */
+  --color-gold: #e8af47;
+  --color-gold-hover: #d49c38;
+  --color-gold-deep: #b8862e;
+  --color-gold-ink: #131211;
+
+  /* Danger / recording — warm red */
+  --color-flame: #e85a4f;
+  --color-flame-hover: #d44a3f;
+
+  /* Success */
+  --color-leaf: #5fb760;
+
+  /* Custom animations */
+  --animate-glow: glow-pulse 2s ease-in-out infinite;
+  --animate-breathe: breathe 2s ease-in-out infinite;
+}
+
+/* ─── Shadow tokens (outside @theme so they stay as runtime vars) ── */
+
+:root {
+  --shadow-soft: 0 1px 2px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+  --shadow-lifted: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+  --shadow-elevated: 0 4px 16px rgba(0,0,0,0.4), 0 0 1px rgba(255,255,255,0.08);
+  --shadow-glow-gold: 0 0 16px rgba(232,175,71,0.15);
+  --shadow-glow-flame: 0 0 16px rgba(232,90,79,0.2);
+  --shadow-well: inset 0 1px 3px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.1);
+  --shadow-press: 0 1px 3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+  --shadow-hero: 0 4px 14px rgba(232,175,71,0.25), 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* ─── Light mode ─────────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-canvas: #f2efe9;
+    --color-panel: #faf9f7;
+    --color-raised: #eae5de;
+    --color-hover: #e0dbd3;
+    --color-subtle: #d4cec5;
+
+    --color-ink: #15130f;
+    --color-ink-muted: #64594d;
+    --color-ink-faint: #928880;
+
+    --color-edge: #d0c9bf;
+    --color-edge-strong: #b8b0a5;
+
+    --color-gold: #b87d0c;
+    --color-gold-hover: #9c6a0b;
+    --color-gold-deep: #7d5509;
+    --color-gold-ink: #ffffff;
+
+    --color-flame: #c94139;
+    --color-flame-hover: #b33830;
+
+    --color-leaf: #3f8c40;
+
+    /* Light mode shadows — warm gold-tinted, diffuse */
+    --shadow-soft: 0 1px 3px rgba(140,98,16,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-lifted: 0 2px 8px rgba(140,98,16,0.08), 0 1px 3px rgba(0,0,0,0.05);
+    --shadow-elevated: 0 4px 20px rgba(140,98,16,0.10), 0 2px 6px rgba(0,0,0,0.04);
+    --shadow-glow-gold: 0 0 20px rgba(196,137,15,0.12);
+    --shadow-glow-flame: 0 0 20px rgba(212,74,63,0.15);
+    --shadow-well: inset 0 1px 3px rgba(140,98,16,0.06);
+    --shadow-press: 0 1px 3px rgba(140,98,16,0.10), inset 0 1px 0 rgba(255,255,255,0.8);
+    --shadow-hero: 0 6px 20px rgba(196,137,15,0.20), 0 2px 6px rgba(0,0,0,0.06);
+  }
+}
+
+/* ─── Component utilities ────────────────────────────────────────── */
+
+@layer components {
+  .surface-grain {
+    position: relative;
+  }
+  .surface-grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.02;
+    pointer-events: none;
+    background: repeating-conic-gradient(#000 0% 25%, transparent 0% 50%);
+    background-size: 4px 4px;
+    border-radius: inherit;
+    mix-blend-mode: multiply;
+    z-index: 50;
+  }
+}
+
+/* ─── Shadow utilities (runtime-resolved via CSS vars) ───────────── */
+
+@utility shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+@utility shadow-lifted {
+  box-shadow: var(--shadow-lifted);
+}
+@utility shadow-elevated {
+  box-shadow: var(--shadow-elevated);
+}
+@utility shadow-glow-gold {
+  box-shadow: var(--shadow-glow-gold);
+}
+@utility shadow-glow-flame {
+  box-shadow: var(--shadow-glow-flame);
+}
+@utility shadow-well {
+  box-shadow: var(--shadow-well);
+}
+@utility shadow-press {
+  box-shadow: var(--shadow-press);
+}
+@utility shadow-hero {
+  box-shadow: var(--shadow-hero);
+}
+
+/* ─── Keyframes ──────────────────────────────────────────────────── */
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: var(--shadow-glow-flame); }
+  50% { box-shadow: 0 0 28px rgba(212,74,63,0.35); }
+}
+
+@keyframes shadow-breathe {
+  0%, 100% { box-shadow: var(--shadow-press); }
+  50% { box-shadow: var(--shadow-lifted); }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.8); opacity: 0; }
+}
+
+@keyframes float-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Base resets ────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body,
+  #app,
+  #settings-app {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+  }
+
+  button {
+    font-family: var(--font-sans);
+    cursor: pointer;
+    border: none;
+    outline: none;
+    background: none;
+    color: inherit;
+  }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* ─── Scrollbar ──────────────────────────────────────────────────── */
+
+  ::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-edge-strong);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-faint);
+  }
+}
