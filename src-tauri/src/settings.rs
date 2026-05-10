@@ -54,14 +54,6 @@ pub struct UserSettings {
     /// Whether the first-launch setup wizard has been completed
     #[serde(default)]
     pub setup_complete: bool,
-    /// Model IDs whose CoreML encoder failed the post-load self-test on
-    /// this machine. The encoder dir on disk has been quarantined to
-    /// `<stem>-encoder.mlmodelc.broken`; the backfill path skips redownload
-    /// for any model in this list, and load skips the self-test re-run.
-    /// Cleared per-model by `repair_active_model` to retry after a macOS
-    /// or whisper.cpp update.
-    #[serde(default)]
-    pub coreml_disabled_for_models: Vec<String>,
     /// Whether the streaming-preview worker emits live partial captions
     /// while recording. When false, only the final transcript on stop runs.
     /// Defaults to false (simpler, lower CPU, fewer moving parts). Existing
@@ -90,7 +82,6 @@ impl Default for UserSettings {
             selected_correction_model: None,
             vocabulary_learning: true,
             setup_complete: false,
-            coreml_disabled_for_models: Vec::new(),
             streaming_preview: false,
         }
     }

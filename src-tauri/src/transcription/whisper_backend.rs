@@ -113,19 +113,16 @@ impl WhisperBackend {
         Ok(Self { ctx })
     }
 
-    /// Run a 2 s 220 Hz sine probe through the encode+decode pipeline so we
-    /// surface broken CoreML encoders before the user hits one mid-dictation.
-    /// Whisper-rs has no API to disable CoreML alone (`use_gpu` gates Metal
-    /// too) so a runtime check is the only way to catch the case where
-    /// `whisper_coreml_init` succeeds but `whisper_coreml_encode` fails — the
-    /// `GenericError(-6)` we see on macOS 26.4 / M1 Max despite a
-    /// structurally-valid `.mlmodelc` on disk.
+    /// Run a 2 s 220 Hz sine probe through the encode+decode pipeline as a
+    /// soft startup diagnostic. Failures are logged by the caller but no
+    /// longer trigger any destructive recovery (encoder quarantine etc.) —
+    /// the runtime fallback infrastructure was based on a wrong diagnosis
+    /// and was making things worse, so it was removed.
     ///
-    /// An earlier version of this probe used 1 s of pure silence; in practice
-    /// that passes on broken machines (silence has trivially predictable mel
-    /// features and the CoreML encoder takes a fast path that doesn't exercise
-    /// the failing kernels). A low-amplitude pure tone has real spectral
-    /// energy distributed across mel bins and reliably reproduces the -6.
+    /// Uses `Final` mode to mirror the dictation path the user actually
+    /// invokes; that's also the path without the `abort_callback` wired in,
+    /// which is what previously made the probe falsely fail on macOS 26.4 /
+    /// M1 with CoreML+Metal even though real Final-mode transcribes work.
     pub fn self_test(&self) -> Result<(), SelfTestError> {
         let len = (WHISPER_SAMPLE_RATE as usize) * 2;
         let mut probe = Vec::with_capacity(len);
@@ -136,7 +133,7 @@ impl WhisperBackend {
         let opts = TranscribeOptions {
             language: None,
             initial_prompt: None,
-            mode: TranscribeMode::PartialPreview,
+            mode: TranscribeMode::Final,
         };
         let cancel = CancellationToken::new();
         match self.transcribe(&probe, &opts, &cancel) {
@@ -224,12 +221,19 @@ impl TranscriptionBackend for WhisperBackend {
             }
         }
 
-        // Wire cancellation into whisper.cpp's abort_callback. The callback
-        // fires periodically inside the inference loop; returning true makes
-        // whisper.cpp bail out cleanly. The token is cloned so it outlives
-        // this call frame — the closure box is owned by whisper-rs internals.
-        let cancel_token = cancel.clone();
-        params.set_abort_callback_safe(move || cancel_token.is_cancelled());
+        // Wire cancellation into whisper.cpp's abort_callback ONLY for
+        // partial-preview decodes. The streaming worker uses it to bail a
+        // stale pass when the user releases the hotkey. Final-mode decodes
+        // run after recording stops and have no caller-side cancellation —
+        // and on macOS the abort_callback poll interacts badly with the
+        // CoreML/Metal encoder path, surfacing as `GenericError(-6)`
+        // ("failed to encode") on real audio. v0.1.1 didn't set the
+        // callback at all and worked; gate it to PartialPreview to restore
+        // that path for the dictation flow.
+        if matches!(opts.mode, TranscribeMode::PartialPreview) {
+            let cancel_token = cancel.clone();
+            params.set_abort_callback_safe(move || cancel_token.is_cancelled());
+        }
 
         state
             .full(params, audio)

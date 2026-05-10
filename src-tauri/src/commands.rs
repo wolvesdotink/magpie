@@ -14,13 +14,6 @@ use crate::transcription::backend::{CancellationToken, TranscribeMode, Transcrib
 use crate::transcription::postprocess;
 use crate::transcription::streaming;
 
-/// Whisper.cpp returns `GenericError(-6)` ("failed to encode") on a CoreML
-/// encoder that loaded but cannot run — the same signature `self_test` looks
-/// for. This is the runtime fallback's trigger predicate.
-fn is_coreml_encode_failure<E: std::fmt::Display>(e: &E) -> bool {
-    let s = e.to_string();
-    s.contains("GenericError(-6)") || s.contains("failed to encode")
-}
 use crate::overlay;
 use crate::tray::{self, TrayState};
 use crate::vocabulary::{VocabularyEntry, VocabularySource};
@@ -224,34 +217,7 @@ pub async fn stop_recording(
                 initial_prompt: prompt_ref,
                 mode: TranscribeMode::Final,
             };
-            // Runtime CoreML fallback. The load-time self_test() is supposed
-            // to catch broken encoders before any real dictation, but on some
-            // machines the failure mode only surfaces on real audio (logs:
-            // model loads, self-test passes, every real transcribe hits
-            // GenericError(-6)). If that happens we quarantine the encoder,
-            // hot-swap a Metal-only backend into state.backend, and retry
-            // once so the user's first dictation still completes.
-            let initial = asr_backend.transcribe(&resampled, &opts, &cancel);
-            let transcribe_result = match initial {
-                Err(e) if is_coreml_encode_failure(&e) => {
-                    log::warn!(
-                        "Final transcribe hit CoreML encode failure ({}); \
-                         quarantining encoder and retrying on Metal-only backend",
-                        e
-                    );
-                    match crate::quarantine_and_reload_metal_only(&app_clone, &state_arc) {
-                        Ok(new_backend) => new_backend.transcribe(&resampled, &opts, &cancel),
-                        Err(re) => {
-                            log::error!(
-                                "Backend reload after runtime quarantine failed: {}",
-                                re
-                            );
-                            Err(e) // surface the original error to the UI
-                        }
-                    }
-                }
-                other => other,
-            };
+            let transcribe_result = asr_backend.transcribe(&resampled, &opts, &cancel);
             match transcribe_result {
                 Ok(out) => {
                     let raw_text = out.text;
@@ -615,27 +581,14 @@ fn load_model_internal(
     let (backend, self_test) = crate::load_with_self_test(path)
         .map_err(|e| format!("Failed to load model: {}", e))?;
 
-    let backend = match self_test {
-        Err(crate::transcription::whisper_backend::SelfTestError::CoreMLEncodeFail) => {
-            // Quarantine the just-loaded encoder and reload Metal-only.
-            // Drop the broken-encoder backend before reloading so
-            // whisper.cpp picks up the absence of the `.mlmodelc`.
-            crate::quarantine_encoder(app, state.inner(), model_id, path);
-            drop(backend);
-            let (fresh, _) = crate::load_with_self_test(path)
-                .map_err(|e| format!("Failed to reload model after encoder quarantine: {}", e))?;
-            fresh
-        }
-        Err(e) => {
-            log::warn!(
-                "Self-test for model {} returned non-CoreML error: {}. Continuing.",
-                model_id,
-                e
-            );
-            backend
-        }
-        Ok(()) => backend,
-    };
+    if let Err(e) = self_test {
+        log::warn!(
+            "Self-test for model {} returned: {}. Continuing — \
+             first real transcription will surface any actual issue.",
+            model_id,
+            e
+        );
+    }
 
     {
         let mut slot = state
@@ -760,9 +713,10 @@ pub async fn run_repair_active_model(app: &AppHandle) {
         }
     };
 
-    // Clear any prior quarantine before re-fetching: lift the disable flag,
-    // and drop a stale `.mlmodelc.broken` from the previous self-test failure
-    // so the post-download reload can't pick the broken artifact back up.
+    // Drop a stale `.mlmodelc.broken` from a prior (now-removed) quarantine
+    // path so the post-download reload can't pick the broken artifact back
+    // up. New builds don't create these, but old user installs may still
+    // have one on disk.
     {
         let stem = model_path
             .file_stem()
@@ -778,15 +732,6 @@ pub async fn run_repair_active_model(app: &AppHandle) {
                 );
             } else {
                 log::info!("Repair Active Model: removed stale {}", broken_dir.display());
-            }
-        }
-        if let Ok(mut settings) = state.settings.lock() {
-            let before = settings.coreml_disabled_for_models.len();
-            settings.coreml_disabled_for_models.retain(|m| m != &model_id);
-            if settings.coreml_disabled_for_models.len() != before {
-                if let Err(e) = settings.save() {
-                    log::error!("Failed to persist cleared CoreML disable flag: {}", e);
-                }
             }
         }
     }
