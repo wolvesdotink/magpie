@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { getAppState } from "@/lib/commands";
 import {
   onRecordingStarted,
@@ -27,6 +27,24 @@ export function useAppState() {
   const recordingGeneration = ref(0);
   const amplitude = ref(0);
   const partialText = ref("");
+  // Drives the auto-dismissing error pill in OverlayApp.vue. We use a
+  // tick counter rather than a Date.now() comparison so the pill clears
+  // reactively without polling. The setTimeout is held in a ref so a new
+  // error replaces a still-visible older one cleanly.
+  const errorTick = ref(0);
+  let errorTimer: ReturnType<typeof setTimeout> | null = null;
+  const ERROR_VISIBLE_MS = 4000;
+  const showError = computed(() => !!error.value && errorTick.value > 0);
+
+  function flashError(message: string) {
+    error.value = message;
+    errorTick.value++;
+    if (errorTimer) clearTimeout(errorTimer);
+    errorTimer = setTimeout(() => {
+      errorTick.value = 0;
+      error.value = null;
+    }, ERROR_VISIBLE_MS);
+  }
 
   const unlisteners: UnlistenFn[] = [];
 
@@ -49,6 +67,12 @@ export function useAppState() {
         recording.value = true;
         processing.value = false;
         error.value = null;
+        // Dismiss any auto-fading error pill as soon as the user retries.
+        errorTick.value = 0;
+        if (errorTimer) {
+          clearTimeout(errorTimer);
+          errorTimer = null;
+        }
         recordingGeneration.value++;
         // New recording wipes any leftover partial caption from the prior session.
         partialText.value = "";
@@ -101,7 +125,10 @@ export function useAppState() {
       await onTranscriptionError((err) => {
         processing.value = false;
         correcting.value = false;
-        error.value = err.error;
+        // Drop any stale partial caption — a failed final pass means the
+        // preview text is no longer the user's intended output.
+        partialText.value = "";
+        flashError(err.error);
       }),
     );
 
@@ -123,6 +150,10 @@ export function useAppState() {
 
   onUnmounted(() => {
     unlisteners.forEach((unlisten) => unlisten());
+    if (errorTimer) {
+      clearTimeout(errorTimer);
+      errorTimer = null;
+    }
   });
 
   return {
@@ -132,6 +163,7 @@ export function useAppState() {
     hasModel,
     lastTranscription,
     error,
+    showError,
     transitionSource,
     recordingGeneration,
     amplitude,

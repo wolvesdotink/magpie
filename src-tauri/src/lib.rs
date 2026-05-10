@@ -79,6 +79,7 @@ pub fn run() {
             commands::add_vocabulary_entry,
             commands::remove_vocabulary_entry,
             commands::clear_vocabulary,
+            commands::repair_active_model,
         ])
         .on_window_event(|window, event| {
             match window.label() {
@@ -180,7 +181,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // Try to load previously selected model
     let state = app.state::<Arc<AppState>>();
-    try_load_last_model(&state);
+    try_load_last_model(&state, app.handle());
 
     // Try to load previously selected correction model
     try_load_last_correction_model(&state);
@@ -387,7 +388,13 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 /// The actual whisper-rs FFI work runs in a dedicated thread so that a C++
 /// exception escaping the FFI boundary (which `catch_unwind` cannot catch)
 /// aborts only that thread instead of the entire application.
-fn try_load_last_model(state: &Arc<AppState>) {
+///
+/// After a successful load, schedules a background `.mlmodelc` backfill if
+/// the registry entry advertises a CoreML encoder URL but the sibling
+/// directory is missing on disk. This recovers gracefully from upgrades
+/// that introduce CoreML acceleration over models downloaded by an older
+/// build (otherwise whisper.cpp inference fails with `GenericError(-6)`).
+fn try_load_last_model(state: &Arc<AppState>, app_handle: &tauri::AppHandle) {
     let selected = match state.settings.lock() {
         Ok(settings) => settings.selected_model.clone(),
         Err(e) => {
@@ -396,7 +403,7 @@ fn try_load_last_model(state: &Arc<AppState>) {
         }
     };
 
-    let (model_id, path) = match selected {
+    let (model_id, path, info) = match selected {
         Some(id) => {
             let info = match models::registry::find_model(&id) {
                 Some(i) => i,
@@ -406,7 +413,7 @@ fn try_load_last_model(state: &Arc<AppState>) {
                 Ok(p) if p.exists() => p,
                 _ => return,
             };
-            (id, p)
+            (id, p, info)
         }
         None => return,
     };
@@ -439,9 +446,12 @@ fn try_load_last_model(state: &Arc<AppState>) {
                 *slot = Some(backend);
             }
             if let Ok(mut model_path) = state.current_model_path.lock() {
-                *model_path = Some(path);
+                *model_path = Some(path.clone());
             }
             log::info!("Auto-loaded model: {}", model_id);
+
+            // CoreML encoder backfill — non-blocking. See function comment.
+            maybe_backfill_coreml_encoder(app_handle, state.clone(), &info, model_id, path);
         }
         Ok(Err(e)) => {
             log::error!("Failed to auto-load model {}: {}", model_id, e);
@@ -460,6 +470,178 @@ fn try_load_last_model(state: &Arc<AppState>) {
             }
         }
     }
+}
+
+/// If the loaded model's registry entry advertises a CoreML encoder URL
+/// and the sibling `.mlmodelc` directory is missing, kick off a background
+/// download. Once the encoder lands we attempt to swap in a fresh
+/// `WhisperContext` so the next transcription picks up ANE acceleration —
+/// or, if the user is mid-recording, we defer the swap until idle (see
+/// `pending_reload` in `AppState`).
+fn maybe_backfill_coreml_encoder(
+    app: &tauri::AppHandle,
+    state: Arc<AppState>,
+    info: &models::registry::ModelInfo,
+    model_id: String,
+    model_path: std::path::PathBuf,
+) {
+    let encoder_url = match info.encoder_url.clone() {
+        Some(u) => u,
+        None => return, // Distil models etc. — no CoreML encoder
+    };
+    let encoder_size = info.encoder_size_bytes.unwrap_or(0);
+    let models_dir = match models::storage::models_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            log::warn!("Cannot resolve models dir for encoder backfill: {}", e);
+            return;
+        }
+    };
+    let encoder_dir = models_dir.join(
+        models::downloader::encoder_dir_name_from_filename(&info.filename),
+    );
+    if encoder_dir.exists() {
+        return;
+    }
+
+    log::warn!(
+        "CoreML enabled but encoder missing for model '{}' at {:?}. \
+         whisper.cpp may fail with GenericError(-6) despite ALLOW_FALLBACK. \
+         Triggering background backfill.",
+        model_id,
+        encoder_dir
+    );
+
+    let app2 = app.clone();
+    let id2 = model_id.clone();
+    let path2 = model_path.clone();
+    let state2 = state.clone();
+    tauri::async_runtime::spawn(async move {
+        match models::downloader::download_encoder_only(
+            &app2,
+            &id2,
+            &encoder_url,
+            encoder_size,
+            &encoder_dir,
+        )
+        .await
+        {
+            Ok(()) => {
+                log::info!(
+                    "CoreML encoder backfill complete for {}; reloading backend",
+                    id2
+                );
+                reload_backend_after_backfill(app2, state2, id2, path2).await;
+            }
+            Err(e) => {
+                log::warn!(
+                    "CoreML encoder backfill failed for {}: {}. \
+                     Use the tray's 'Repair Active Model' to retry.",
+                    id2,
+                    e
+                );
+            }
+        }
+    });
+}
+
+/// Rebuild the `WhisperContext` so the freshly downloaded `.mlmodelc`
+/// takes effect. Defers to the next idle moment if a recording is in
+/// flight — interrupting an active dictation is worse UX than waiting one
+/// cycle. The deferred reload is kicked from `commands.rs::stop_recording`.
+async fn reload_backend_after_backfill(
+    app: tauri::AppHandle,
+    state: Arc<AppState>,
+    model_id: String,
+    path: std::path::PathBuf,
+) {
+    if state.is_recording() || state.is_processing() {
+        log::info!(
+            "Encoder ready for {}; deferring backend reload until idle",
+            model_id
+        );
+        if let Ok(mut slot) = state.pending_reload.lock() {
+            *slot = Some((model_id, path));
+        }
+        return;
+    }
+
+    let path_clone = path.clone();
+    let load_handle = std::thread::Builder::new()
+        .name("whisper-reload".into())
+        .spawn(
+            move || -> Result<Arc<dyn transcription::backend::TranscriptionBackend>, String> {
+                transcription::whisper_backend::WhisperBackend::load(&path_clone)
+                    .map(|b| Arc::new(b) as Arc<dyn transcription::backend::TranscriptionBackend>)
+                    .map_err(|e| format!("{}", e))
+            },
+        );
+
+    let handle = match load_handle {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("Failed to spawn whisper-reload thread: {}", e);
+            return;
+        }
+    };
+
+    match handle.join() {
+        Ok(Ok(backend)) => {
+            if let Ok(mut slot) = state.backend.lock() {
+                *slot = Some(backend);
+            }
+            if let Ok(mut model_path) = state.current_model_path.lock() {
+                *model_path = Some(path);
+            }
+            log::info!("Backend reloaded with CoreML encoder for {}", model_id);
+            let payload = events::AppStatePayload {
+                recording: state.is_recording(),
+                processing: state.is_processing(),
+                has_model: true,
+                last_transcription: state
+                    .last_transcription
+                    .lock()
+                    .ok()
+                    .map(|g| g.clone())
+                    .unwrap_or_default(),
+            };
+            events::emit_event(&app, events::event_names::APP_STATE_CHANGED, payload);
+        }
+        Ok(Err(e)) => log::error!(
+            "Backend reload after encoder backfill failed for {}: {}",
+            model_id,
+            e
+        ),
+        Err(_) => log::error!(
+            "whisper-reload thread crashed for model {} after backfill",
+            model_id
+        ),
+    }
+}
+
+/// Public entry point used by `commands.rs::stop_recording` to drain a
+/// deferred backend reload once the recording-and-processing cycle ends.
+pub async fn flush_pending_reload(app: tauri::AppHandle, state: Arc<AppState>) {
+    let pending = match state.pending_reload.lock() {
+        Ok(mut g) => g.take(),
+        Err(_) => return,
+    };
+    if let Some((model_id, path)) = pending {
+        reload_backend_after_backfill(app, state, model_id, path).await;
+    }
+}
+
+/// Public re-export of the backend reload helper for cross-module callers
+/// (specifically `commands.rs::run_repair_active_model`). Same semantics
+/// as the internal function: defers if recording/processing, otherwise
+/// rebuilds the WhisperContext and swaps it in.
+pub async fn reload_backend_after_backfill_public(
+    app: tauri::AppHandle,
+    state: Arc<AppState>,
+    model_id: String,
+    path: std::path::PathBuf,
+) {
+    reload_backend_after_backfill(app, state, model_id, path).await;
 }
 
 /// Remove leftover `.downloading` temp files from interrupted downloads

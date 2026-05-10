@@ -46,6 +46,15 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                         let _ = window.emit("menu://check-for-updates", ());
                     }
                 }
+                "repair_active_model" => {
+                    // Re-fetch the CoreML encoder for the loaded model and
+                    // swap in a fresh WhisperContext. Runs on the async
+                    // runtime so the menu callback returns immediately.
+                    let app_h = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        crate::commands::run_repair_active_model(&app_h).await;
+                    });
+                }
                 _ if id.starts_with("model:") => {
                     let model_id = &id["model:".len()..];
                     handle_model_selection(app, model_id);
@@ -75,6 +84,22 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
 
     let model_submenu = build_model_submenu(app, &state)?;
 
+    // "Repair Active Model" — only meaningful when a model is loaded and we're
+    // not actively recording or processing (the repair downloads the CoreML
+    // encoder and swaps the WhisperContext, which would conflict with an
+    // in-flight inference). Disabled but still visible otherwise so the user
+    // sees that the option exists.
+    let backend_loaded = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
+    let idle = !state.is_recording() && !state.is_processing();
+    let repair_enabled = backend_loaded && idle;
+    let repair = MenuItem::with_id(
+        app,
+        "repair_active_model",
+        "Repair Active Model",
+        repair_enabled,
+        None::<&str>,
+    )?;
+
     let separator2 = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
     let check_updates = MenuItem::with_id(
@@ -93,6 +118,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
             &status,
             &separator1,
             &model_submenu,
+            &repair,
             &separator2,
             &settings,
             &check_updates,

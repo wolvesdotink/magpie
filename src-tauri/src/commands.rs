@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::audio;
 use crate::correction;
@@ -171,6 +171,11 @@ pub async fn stop_recording(
     let app_clone = app.clone();
 
     tokio::task::spawn_blocking(move || {
+        // Tracks whether the transcription pipeline produced an error so the
+        // overlay's auto-dismissing error pill has time to be seen by the
+        // user before the overlay window hides itself.
+        let mut had_error = false;
+
         // Get language setting and vocabulary data
         let language = {
             let settings = state_arc.settings.lock().unwrap();
@@ -336,6 +341,7 @@ pub async fn stop_recording(
                             error: e.to_string(),
                         },
                     );
+                    had_error = true;
                 }
             }
         } else {
@@ -347,12 +353,34 @@ pub async fn stop_recording(
                     error: "No model loaded".to_string(),
                 },
             );
+            had_error = true;
         }
 
         state_arc.set_processing(false);
         tray::set_tray_icon(&app_clone, TrayState::Idle);
         tray::set_tray_status(&app_clone, "Magpie — Ready");
-        overlay::hide_overlay(&app_clone);
+        // On error, leave the overlay visible briefly so the auto-dismissing
+        // error pill (OverlayApp.vue) is actually seen. On success, hide
+        // immediately — the result has already been pasted into the active app.
+        if had_error {
+            let app_for_hide = app_clone.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(4500)).await;
+                overlay::hide_overlay(&app_for_hide);
+            });
+        } else {
+            overlay::hide_overlay(&app_clone);
+        }
+
+        // Drain any backend reload deferred by the encoder-backfill path
+        // (see lib.rs::reload_backend_after_backfill). At this point we're
+        // idle: recording=false, processing=false. Schedule on the async
+        // runtime so the spawn_blocking task can return immediately.
+        let app_for_flush = app_clone.clone();
+        let state_for_flush = state_arc.clone();
+        tauri::async_runtime::spawn(async move {
+            crate::flush_pending_reload(app_for_flush, state_for_flush).await;
+        });
     });
 
     Ok(())
@@ -580,6 +608,114 @@ fn get_app_state_payload(state: &State<'_, Arc<AppState>>) -> AppStatePayload {
         processing: state.is_processing(),
         has_model,
         last_transcription,
+    }
+}
+
+// ── Repair Active Model ────────────────────────────────────────────
+
+/// Re-fetch the CoreML encoder package for the currently loaded model and
+/// reload the `WhisperBackend` so the encoder is picked up. Used by the
+/// tray "Repair Active Model" item as the manual recovery path when the
+/// startup backfill fails (network blip, server 5xx, partial unzip).
+///
+/// Refuses to run while recording or processing is in flight — swapping
+/// the backend mid-inference would crash the active call.
+#[tauri::command]
+pub async fn repair_active_model(
+    app: AppHandle,
+    _state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    run_repair_active_model(&app).await;
+    Ok(())
+}
+
+/// AppHandle-only entry point so non-Tauri callers (the tray menu handler)
+/// don't need to thread a `State<'_, Arc<AppState>>` reference.
+pub async fn run_repair_active_model(app: &AppHandle) {
+    let state = app.state::<Arc<AppState>>();
+
+    if state.is_recording() || state.is_processing() {
+        log::warn!("Repair Active Model: refusing while recording or processing");
+        events::emit_event(
+            app,
+            event_names::TRANSCRIPTION_ERROR,
+            TranscriptionError {
+                error: "Cannot repair model while recording or processing".to_string(),
+            },
+        );
+        return;
+    }
+
+    let model_id = match state.settings.lock().ok().and_then(|s| s.selected_model.clone()) {
+        Some(id) => id,
+        None => {
+            log::warn!("Repair Active Model: no model selected");
+            events::emit_event(
+                app,
+                event_names::TRANSCRIPTION_ERROR,
+                TranscriptionError {
+                    error: "No active model to repair".to_string(),
+                },
+            );
+            return;
+        }
+    };
+    let info = match registry::find_model(&model_id) {
+        Some(i) => i,
+        None => {
+            log::warn!("Repair Active Model: unknown model id '{}'", model_id);
+            return;
+        }
+    };
+    let encoder_url = match info.encoder_url.clone() {
+        Some(u) => u,
+        None => {
+            log::info!(
+                "Repair Active Model: '{}' has no CoreML encoder (Distil-Whisper or similar) — nothing to repair",
+                model_id
+            );
+            return;
+        }
+    };
+    let encoder_size = info.encoder_size_bytes.unwrap_or(0);
+    let models_dir = match storage::models_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!("Repair Active Model: cannot resolve models dir: {}", e);
+            return;
+        }
+    };
+    let encoder_dir = models_dir.join(downloader::encoder_dir_name_from_filename(&info.filename));
+    let model_path = match storage::model_path(&info.filename) {
+        Ok(p) if p.exists() => p,
+        _ => {
+            log::error!(
+                "Repair Active Model: model file missing for '{}' — re-download it instead",
+                model_id
+            );
+            return;
+        }
+    };
+
+    log::info!("Repairing model '{}' — re-downloading CoreML encoder", model_id);
+    match downloader::download_encoder_only(app, &model_id, &encoder_url, encoder_size, &encoder_dir).await {
+        Ok(()) => {
+            log::info!("Repair Active Model: encoder restored for '{}'; reloading backend", model_id);
+            // Reuse the same idle-aware reload helper used by the startup
+            // backfill path. Because we early-returned on busy state above,
+            // the reload runs synchronously here.
+            crate::reload_backend_after_backfill_public(app.clone(), state.inner().clone(), model_id, model_path).await;
+        }
+        Err(e) => {
+            log::error!("Repair Active Model: encoder download failed: {}", e);
+            events::emit_event(
+                app,
+                event_names::TRANSCRIPTION_ERROR,
+                TranscriptionError {
+                    error: format!("Repair failed: {}", e),
+                },
+            );
+        }
     }
 }
 

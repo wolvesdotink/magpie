@@ -35,14 +35,55 @@ impl WhisperBackend {
     /// (running this on a dedicated thread) is the caller's responsibility;
     /// see `lib.rs::try_load_last_model`.
     pub fn load(model_path: &Path) -> Result<Self> {
+        // CoreML escape hatch. whisper.cpp's CoreML init is opt-in at
+        // runtime via `WhisperContextParameters::use_gpu` indirectly; the
+        // `coreml` cargo feature compiles in the path but a missing
+        // `.mlmodelc` should still let inference fall back to Metal. If a
+        // user hits the encoder-failure mode anyway (whisper.cpp returning
+        // GenericError(-6)), setting `MAGPIE_DISABLE_COREML=1` skips the
+        // ANE encoder load attempt by clearing `use_gpu`. This is a safety
+        // valve, not a recommended config — it disables Metal too. See
+        // README for the recommended `MAGPIE_DISABLE_COREML` workflow.
+        let disable_coreml = std::env::var("MAGPIE_DISABLE_COREML")
+            .map(|v| !v.is_empty() && v != "0")
+            .unwrap_or(false);
+
+        // Surface CoreML encoder presence in the load log so a future
+        // GenericError(-6) is easy to diagnose. The encoder lives next to
+        // the GGML file as `<stem>-encoder.mlmodelc` (see downloader.rs).
+        let coreml_present = model_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|stem| {
+                model_path.with_file_name(format!("{}-encoder.mlmodelc", stem))
+            })
+            .map(|p| p.exists())
+            .unwrap_or(false);
+        let coreml_status = if disable_coreml {
+            "disabled via MAGPIE_DISABLE_COREML"
+        } else if coreml_present {
+            "encoder present"
+        } else {
+            "encoder MISSING — may cause GenericError(-6) until backfill completes"
+        };
         log::info!(
-            "Loading whisper model from: {} (backend: {})",
+            "Loading whisper model from: {} (backend: {}, CoreML: {})",
             model_path.display(),
             BUILT_BACKENDS,
+            coreml_status,
         );
         let start = Instant::now();
 
-        let params = WhisperContextParameters::default();
+        let mut params = WhisperContextParameters::default();
+        if disable_coreml {
+            // Whisper-rs 0.13 doesn't expose a dedicated CoreML toggle — the
+            // closest knob is `use_gpu`, which gates BOTH Metal and the
+            // CoreML path. Disabling falls back to CPU inference; slow but
+            // always works. Documented as the last-resort recovery in the
+            // README.
+            log::warn!("MAGPIE_DISABLE_COREML set — disabling GPU acceleration (CPU only)");
+            params.use_gpu = false;
+        }
         let ctx = WhisperContext::new_with_params(
             model_path.to_str().context("Invalid model path")?,
             params,

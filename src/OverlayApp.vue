@@ -2,8 +2,16 @@
 import { computed, ref, watch, watchEffect, onUnmounted } from "vue";
 import { useAppState } from "@/composables/useAppState";
 
-const { recording, processing, correcting, transitionSource, recordingGeneration, amplitude, partialText } =
+const { recording, processing, correcting, transitionSource, recordingGeneration, amplitude, partialText, error, showError } =
   useAppState();
+
+// Truncate long error messages so the pill doesn't grow unbounded; the
+// full text still ends up in the Tauri log + dev console.
+const ERROR_MAX_CHARS = 80;
+const errorShort = computed(() => {
+  const msg = error.value ?? "";
+  return msg.length > ERROR_MAX_CHARS ? msg.slice(0, ERROR_MAX_CHARS - 1) + "…" : msg;
+});
 
 const pillTransitionName = computed(() =>
   recording.value && transitionSource.value === "processing"
@@ -161,6 +169,12 @@ const barHeights = computed(() => {
     <Transition name="caption">
       <div v-if="recording && partialText" class="partial-caption">{{ partialText }}</div>
     </Transition>
+    <Transition name="caption">
+      <div v-if="showError" class="error-pill" role="alert">
+        <span class="error-icon" aria-hidden="true">!</span>
+        <span class="error-text">{{ errorShort }}</span>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -232,6 +246,44 @@ const barHeights = computed(() => {
 }
 .caption-leave-to {
   opacity: 0;
+}
+
+/* ---- Error pill (auto-dismissing) ---- */
+.error-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(224, 85, 85, 0.45);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--recording, #e05555);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  box-shadow: 0 0 12px rgba(224, 85, 85, 0.18);
+  will-change: opacity, transform;
+}
+.error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(224, 85, 85, 0.18);
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.error-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- Pill base ---- */

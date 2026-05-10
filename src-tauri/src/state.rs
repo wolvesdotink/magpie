@@ -64,6 +64,12 @@ pub struct AppState {
     pub fn_key_monitor: Mutex<Option<FnKeyMonitorHandle>>,
     /// Sender end of the recording command channel (cloned for hotkey restarts)
     pub recording_tx: Mutex<Option<mpsc::UnboundedSender<RecordingCommand>>>,
+    /// Set by the encoder-backfill path when a CoreML encoder finished
+    /// downloading while the user was mid-recording (or processing a final
+    /// pass). The next stop_recording flush checks this and reloads the
+    /// WhisperContext so subsequent transcriptions pick up ANE acceleration.
+    /// Stored as `(model_id, model_path)` so the reload knows what to load.
+    pub pending_reload: Mutex<Option<(String, PathBuf)>>,
 }
 
 // Safety: Stream is Send but not Sync by default in cpal,
@@ -92,6 +98,7 @@ impl AppState {
             suppress_hide: AtomicBool::new(false),
             fn_key_monitor: Mutex::new(None),
             recording_tx: Mutex::new(None),
+            pending_reload: Mutex::new(None),
         }
     }
 

@@ -195,6 +195,34 @@ pub async fn download_model(
     Ok(final_path)
 }
 
+/// Standalone encoder-only download. Used by the startup backfill path
+/// (when an existing GGML model lacks its `.mlmodelc`) and the tray
+/// "Repair Active Model" command. Removes any pre-existing directory at
+/// `encoder_dest` so a corrupt/partial unpack from a prior run is replaced.
+///
+/// Returns Ok(()) when the encoder is present and validated. Progress is
+/// reported via the standard `MODEL_DOWNLOAD_PROGRESS` event mapped over
+/// the full 0–100% range (no GGML share).
+pub async fn download_encoder_only(
+    app: &AppHandle,
+    model_id: &str,
+    url: &str,
+    expected_bytes: u64,
+    encoder_dest: &Path,
+) -> Result<()> {
+    let client = build_client()?;
+    if encoder_dest.exists() {
+        log::info!(
+            "Removing existing encoder dir before refetch: {}",
+            encoder_dest.display()
+        );
+        let _ = tokio::fs::remove_dir_all(encoder_dest).await;
+    }
+    // ggml_progress_share=0.0 means the encoder owns the entire 0–100% range,
+    // since there's no GGML download in this code path.
+    fetch_and_unpack_encoder(app, model_id, url, expected_bytes, encoder_dest, &client, 0.0).await
+}
+
 fn build_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(constants::DOWNLOAD_CONNECT_TIMEOUT_SECS))
