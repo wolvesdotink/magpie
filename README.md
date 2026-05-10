@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="app-icon.svg" alt="Magpie" width="160" height="160">
+</p>
+
 # Magpie
 
 Open-source, local-first voice-to-text for macOS.
