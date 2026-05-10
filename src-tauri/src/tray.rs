@@ -9,7 +9,8 @@ use tauri::{
 
 use crate::models::{registry, storage};
 use crate::state::AppState;
-use crate::transcription::engine;
+use crate::transcription::backend::TranscriptionBackend;
+use crate::transcription::whisper_backend::WhisperBackend;
 
 /// Set up the system tray icon and menu
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
@@ -173,11 +174,11 @@ fn handle_model_selection(app: &AppHandle, model_id: &str) {
         }
     };
 
-    match engine::load_model(&path) {
-        Ok(ctx) => {
+    match WhisperBackend::load(&path) {
+        Ok(backend) => {
             {
-                let mut whisper_ctx = state.whisper_context.lock().unwrap();
-                *whisper_ctx = Some(ctx);
+                let mut slot = state.backend.lock().unwrap();
+                *slot = Some(Arc::new(backend) as Arc<dyn TranscriptionBackend>);
             }
             {
                 let mut model_path = state.current_model_path.lock().unwrap();

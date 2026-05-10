@@ -10,7 +10,12 @@ use crate::hotkey;
 use crate::models::{downloader, registry, storage};
 use crate::output;
 use crate::state::AppState;
-use crate::transcription::{engine, postprocess};
+use crate::transcription::backend::{
+    CancellationToken, TranscribeMode, TranscribeOptions, TranscriptionBackend,
+};
+use crate::transcription::postprocess;
+use crate::transcription::streaming;
+use crate::transcription::whisper_backend::WhisperBackend;
 use crate::overlay;
 use crate::tray::{self, TrayState};
 use crate::vocabulary::{VocabularyEntry, VocabularySource};
@@ -48,6 +53,24 @@ pub async fn start_recording(
     tray::set_tray_status(&app, "Magpie — Recording...");
     overlay::show_overlay(&app);
     events::emit_event(&app, event_names::RECORDING_STARTED, ());
+
+    // Spawn the streaming-preview worker. It will poll the audio buffer
+    // every ~1.5s and emit PARTIAL_TRANSCRIPTION events the overlay can
+    // render as a live caption. Skip if no backend is loaded — there's
+    // nothing to decode against.
+    let backend_present = state
+        .backend
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
+    if backend_present {
+        let handle = streaming::spawn_streaming_worker(app.clone(), state_arc.clone());
+        if let Ok(mut slot) = state.streaming_handle.lock() {
+            *slot = Some(handle);
+        }
+    } else {
+        log::debug!("Streaming worker not started: no backend loaded");
+    }
 
     // Spawn amplitude emitter thread (20Hz = every 50ms)
     {
@@ -103,6 +126,23 @@ pub async fn stop_recording(
     }
 
     state.set_recording(false);
+
+    // Tear down the streaming worker BEFORE flipping `processing` so a
+    // stale partial can't race the final pass. partial_cancel aborts the
+    // in-flight whisper.cpp call (via the abort_callback wired in the
+    // backend); cancel signals the loop to exit. The 2s timeout bounds
+    // the wait if a stuck inference somehow ignores the abort.
+    let streaming_handle = state
+        .streaming_handle
+        .lock()
+        .ok()
+        .and_then(|mut g| g.take());
+    if let Some(h) = streaming_handle {
+        h.partial_cancel.cancel();
+        h.cancel.cancel();
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(2000), h.join).await;
+    }
+
     state.set_processing(true);
     tray::set_tray_icon(&app, TrayState::Processing);
     tray::set_tray_status(&app, "Magpie — Transcribing...");
@@ -131,9 +171,6 @@ pub async fn stop_recording(
     let app_clone = app.clone();
 
     tokio::task::spawn_blocking(move || {
-        // Resample to 16kHz
-        let resampled = audio::resample::resample_to_16khz(&audio_data, sample_rate);
-
         // Get language setting and vocabulary data
         let language = {
             let settings = state_arc.settings.lock().unwrap();
@@ -151,11 +188,28 @@ pub async fn stop_recording(
             Some(initial_prompt.as_str())
         };
 
-        // Transcribe
-        let ctx_guard = state_arc.whisper_context.lock().unwrap();
-        if let Some(ctx) = ctx_guard.as_ref() {
-            match engine::transcribe(ctx, &resampled, language.as_deref(), prompt_ref) {
-                Ok((raw_text, duration_ms)) => {
+        // Clone the backend Arc out under a brief lock and release before
+        // running inference. A model swap that lands after this clone
+        // returns will not affect this call — the old Arc keeps the old
+        // backend alive until this scope ends. Named `asr_backend` to avoid
+        // shadowing inside the correction block below, which has its own
+        // `backend` (the LlamaBackend).
+        let asr_backend = state_arc.backend.lock().ok().and_then(|g| g.clone());
+        if let Some(asr_backend) = asr_backend {
+            // Resample to whatever rate the backend wants (16kHz for whisper.cpp).
+            let target_rate = asr_backend.capabilities().sample_rate_hz;
+            let resampled = audio::resample::resample(&audio_data, sample_rate, target_rate);
+
+            let cancel = CancellationToken::new(); // unused for Final today; reserved
+            let opts = TranscribeOptions {
+                language: language.as_deref(),
+                initial_prompt: prompt_ref,
+                mode: TranscribeMode::Final,
+            };
+            match asr_backend.transcribe(&resampled, &opts, &cancel) {
+                Ok(out) => {
+                    let raw_text = out.text;
+                    let duration_ms = out.duration_ms;
                     // Post-process
                     let (filler_words, remove_fillers) = {
                         let settings = state_arc.settings.lock().unwrap();
@@ -285,7 +339,7 @@ pub async fn stop_recording(
                 }
             }
         } else {
-            log::warn!("Cannot transcribe: no whisper model loaded");
+            log::warn!("Cannot transcribe: no transcription backend loaded");
             events::emit_event(
                 &app_clone,
                 event_names::TRANSCRIPTION_ERROR,
@@ -320,7 +374,11 @@ pub async fn toggle_recording(
 
 #[tauri::command]
 pub fn get_app_state(state: State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = state.whisper_context.lock().unwrap().is_some();
+    let has_model = state
+        .backend
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
     let last_transcription = state.last_transcription.lock().unwrap().clone();
 
     AppStatePayload {
@@ -485,11 +543,15 @@ fn load_model_internal(
     path: &std::path::Path,
     model_id: &str,
 ) -> Result<(), String> {
-    let ctx = engine::load_model(path).map_err(|e| format!("Failed to load model: {}", e))?;
+    let backend =
+        WhisperBackend::load(path).map_err(|e| format!("Failed to load model: {}", e))?;
 
     {
-        let mut whisper_ctx = state.whisper_context.lock().unwrap();
-        *whisper_ctx = Some(ctx);
+        let mut slot = state
+            .backend
+            .lock()
+            .map_err(|e| format!("backend mutex poisoned: {}", e))?;
+        *slot = Some(Arc::new(backend) as Arc<dyn TranscriptionBackend>);
     }
     {
         let mut model_path = state.current_model_path.lock().unwrap();
@@ -506,7 +568,11 @@ fn load_model_internal(
 }
 
 fn get_app_state_payload(state: &State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = state.whisper_context.lock().unwrap().is_some();
+    let has_model = state
+        .backend
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
     let last_transcription = state.last_transcription.lock().unwrap().clone();
 
     AppStatePayload {

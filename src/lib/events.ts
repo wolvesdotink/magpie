@@ -9,6 +9,11 @@ export interface TranscriptionError {
   error: string;
 }
 
+export interface PartialTranscriptionPayload {
+  partial: string;
+  isFinal: boolean;
+}
+
 export interface ModelDownloadProgress {
   modelId: string;
   percent: number;
@@ -67,6 +72,14 @@ export function onTranscriptionError(
 ): Promise<UnlistenFn> {
   return listen("transcription-error", (event) => {
     callback(event.payload as TranscriptionError);
+  });
+}
+
+export function onPartialTranscription(
+  callback: (data: PartialTranscriptionPayload) => void,
+): Promise<UnlistenFn> {
+  return listen("partial-transcription", (event) => {
+    callback(event.payload as PartialTranscriptionPayload);
   });
 }
 

@@ -10,6 +10,7 @@ import {
   onCorrectionStarted,
   onCorrectionComplete,
   onAudioAmplitude,
+  onPartialTranscription,
   type TranscriptionResult,
   type AudioAmplitudePayload,
 } from "@/lib/events";
@@ -25,6 +26,7 @@ export function useAppState() {
   const transitionSource = ref<'idle' | 'processing' | null>(null);
   const recordingGeneration = ref(0);
   const amplitude = ref(0);
+  const partialText = ref("");
 
   const unlisteners: UnlistenFn[] = [];
 
@@ -48,6 +50,8 @@ export function useAppState() {
         processing.value = false;
         error.value = null;
         recordingGeneration.value++;
+        // New recording wipes any leftover partial caption from the prior session.
+        partialText.value = "";
       }),
     );
 
@@ -81,6 +85,15 @@ export function useAppState() {
         processing.value = false;
         correcting.value = false;
         lastTranscription.value = result.text;
+        // Final result has replaced the live preview — clear so the
+        // overlay's processing pill renders without a stale caption.
+        partialText.value = "";
+      }),
+    );
+
+    unlisteners.push(
+      await onPartialTranscription((data) => {
+        partialText.value = data.partial;
       }),
     );
 
@@ -122,5 +135,6 @@ export function useAppState() {
     transitionSource,
     recordingGeneration,
     amplitude,
+    partialText,
   };
 }

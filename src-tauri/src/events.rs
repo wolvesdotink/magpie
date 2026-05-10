@@ -8,6 +8,7 @@ pub mod event_names {
     pub const TRANSCRIPTION_STARTED: &str = "transcription-started";
     pub const TRANSCRIPTION_COMPLETE: &str = "transcription-complete";
     pub const TRANSCRIPTION_ERROR: &str = "transcription-error";
+    pub const PARTIAL_TRANSCRIPTION: &str = "partial-transcription";
     pub const MODEL_DOWNLOAD_PROGRESS: &str = "model-download-progress";
     pub const MODEL_DOWNLOAD_COMPLETE: &str = "model-download-complete";
     pub const APP_STATE_CHANGED: &str = "app-state-changed";

@@ -2,7 +2,7 @@
 import { computed, ref, watch, watchEffect, onUnmounted } from "vue";
 import { useAppState } from "@/composables/useAppState";
 
-const { recording, processing, correcting, transitionSource, recordingGeneration, amplitude } =
+const { recording, processing, correcting, transitionSource, recordingGeneration, amplitude, partialText } =
   useAppState();
 
 const pillTransitionName = computed(() =>
@@ -116,56 +116,71 @@ const barHeights = computed(() => {
 
 <template>
   <div class="overlay-container">
-    <Transition :name="pillTransitionName" @after-enter="onAfterEnter">
-      <div v-if="recording" :key="'recording-' + recordingGeneration" class="pill-outer">
-        <div class="pill recording">
-          <div class="dot-wrap">
-            <div class="pulse-dot" />
-            <div class="sonar-ring" />
-            <div class="sonar-ring delay" />
-          </div>
-          <div class="content-swap">
-            <span class="label swap-item" :class="{ active: showRecordingLabel }">Recording</span>
-            <div class="wave-bars swap-item" :class="{ active: !showRecordingLabel }">
-              <div
-                v-for="(h, i) in barHeights"
-                :key="i"
-                class="wave-bar"
-                :style="{ height: h + 'px', '--i': i }"
-              />
+    <div class="pill-stack">
+      <Transition :name="pillTransitionName" @after-enter="onAfterEnter">
+        <div v-if="recording" :key="'recording-' + recordingGeneration" class="pill-outer">
+          <div class="pill recording">
+            <div class="dot-wrap">
+              <div class="pulse-dot" />
+              <div class="sonar-ring" />
+              <div class="sonar-ring delay" />
+            </div>
+            <div class="content-swap">
+              <span class="label swap-item" :class="{ active: showRecordingLabel }">Recording</span>
+              <div class="wave-bars swap-item" :class="{ active: !showRecordingLabel }">
+                <div
+                  v-for="(h, i) in barHeights"
+                  :key="i"
+                  class="wave-bar"
+                  :style="{ height: h + 'px', '--i': i }"
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div v-else-if="processing" key="processing" class="pill-outer">
-        <div class="pill processing">
-          <div class="spinner-wrap">
-            <svg class="spinner" viewBox="0 0 18 18">
-              <circle class="spinner-track" cx="9" cy="9" r="7" />
-              <circle class="spinner-arc" cx="9" cy="9" r="7" />
-            </svg>
-          </div>
-          <div class="content-swap">
-            <span class="label shimmer swap-item" :class="{ active: showTranscribingLabel }">{{ correcting ? 'Cleaning up' : 'Transcribing' }}</span>
-            <div class="typing-dots swap-item" :class="{ active: !showTranscribingLabel }">
-              <div class="t-dot" style="--d: 0s; --warmth: 0deg" />
-              <div class="t-dot" style="--d: 0.2s; --warmth: -10deg" />
-              <div class="t-dot" style="--d: 0.4s; --warmth: -20deg" />
+        <div v-else-if="processing" key="processing" class="pill-outer">
+          <div class="pill processing">
+            <div class="spinner-wrap">
+              <svg class="spinner" viewBox="0 0 18 18">
+                <circle class="spinner-track" cx="9" cy="9" r="7" />
+                <circle class="spinner-arc" cx="9" cy="9" r="7" />
+              </svg>
+            </div>
+            <div class="content-swap">
+              <span class="label shimmer swap-item" :class="{ active: showTranscribingLabel }">{{ correcting ? 'Cleaning up' : 'Transcribing' }}</span>
+              <div class="typing-dots swap-item" :class="{ active: !showTranscribingLabel }">
+                <div class="t-dot" style="--d: 0s; --warmth: 0deg" />
+                <div class="t-dot" style="--d: 0.2s; --warmth: -10deg" />
+                <div class="t-dot" style="--d: 0.4s; --warmth: -20deg" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </Transition>
+    </div>
+    <Transition name="caption">
+      <div v-if="recording && partialText" class="partial-caption">{{ partialText }}</div>
     </Transition>
   </div>
 </template>
 
 <style scoped>
 .overlay-container {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
   height: 100%;
   background: transparent;
+}
+
+/* Stacking grid so the recording / processing pills can crossfade
+   through the same cell without bumping the caption below. */
+.pill-stack {
+  display: grid;
+  place-items: center;
 }
 
 /* ---- Transition wrapper ---- */
@@ -174,6 +189,49 @@ const barHeights = computed(() => {
 .pill-outer {
   will-change: transform, opacity, filter;
   grid-area: 1 / 1; /* Both pills stack in the same cell for crossfade */
+}
+
+/* ---- Live partial-transcription caption ---- */
+.partial-caption {
+  max-width: 320px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.85));
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  will-change: opacity, transform;
+}
+
+.caption-enter-from {
+  opacity: 0;
+  transform: translateY(-2px);
+  filter: blur(2px);
+}
+.caption-enter-active {
+  transition: opacity 0.25s ease-out,
+              transform 0.25s ease-out,
+              filter 0.25s ease-out;
+}
+.caption-enter-to {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+.caption-leave-active {
+  transition: opacity 0.18s ease-in;
+}
+.caption-leave-to {
+  opacity: 0;
 }
 
 /* ---- Pill base ---- */
@@ -452,42 +510,42 @@ const barHeights = computed(() => {
 
 @keyframes dot-hop {
   0%, 82%, 100% {
-    transform: translateY(0) scaleY(1) scaleX(1);
+    transform: translateY(4px) scaleY(1) scaleX(1);
     opacity: 0.3;
   }
   /* Charge-up squash — anticipation before the jump */
   10% {
-    transform: translateY(1.5px) scaleY(0.5) scaleX(1.5);
+    transform: translateY(5.5px) scaleY(0.5) scaleX(1.5);
     opacity: 0.55;
   }
   /* Launch! Stretch tall on the way up */
   24% {
-    transform: translateY(-7px) scaleY(1.3) scaleX(0.7);
+    transform: translateY(-3px) scaleY(1.3) scaleX(0.7);
     opacity: 1;
   }
   /* Peak hang — brief float at the top */
   32% {
-    transform: translateY(-8px) scaleY(1.0) scaleX(1.0);
+    transform: translateY(-4px) scaleY(1.0) scaleX(1.0);
     opacity: 1;
   }
   /* Falling — stretch vertically */
   44% {
-    transform: translateY(-2px) scaleY(1.2) scaleX(0.8);
+    transform: translateY(2px) scaleY(1.2) scaleX(0.8);
     opacity: 0.85;
   }
   /* Landing squash — big, satisfying impact */
   52% {
-    transform: translateY(1px) scaleY(0.45) scaleX(1.55);
+    transform: translateY(5px) scaleY(0.45) scaleX(1.55);
     opacity: 0.7;
   }
   /* Mini bounce — secondary action */
   64% {
-    transform: translateY(-3px) scaleY(1.1) scaleX(0.9);
+    transform: translateY(1px) scaleY(0.9) scaleX(1.1);
     opacity: 0.5;
   }
   /* Settle back */
   74% {
-    transform: translateY(0) scaleY(0.9) scaleX(1.1);
+    transform: translateY(4px) scaleY(0.9) scaleX(1.1);
     opacity: 0.38;
   }
 }

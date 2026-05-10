@@ -192,9 +192,9 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // revoked a permission would press Fn and get no signal.
     {
         let has_model = state
-            .whisper_context
+            .backend
             .lock()
-            .map(|ctx| ctx.is_some())
+            .map(|g| g.is_some())
             .unwrap_or(false);
         let perms = commands::check_permissions();
         let missing_perms =
@@ -417,10 +417,13 @@ fn try_load_last_model(state: &Arc<AppState>) {
     let path_clone = path.clone();
     let load_handle = std::thread::Builder::new()
         .name("whisper-load".into())
-        .spawn(move || -> Result<whisper_rs::WhisperContext, String> {
-            transcription::engine::load_model(&path_clone)
-                .map_err(|e| format!("{}", e))
-        });
+        .spawn(
+            move || -> Result<Arc<dyn transcription::backend::TranscriptionBackend>, String> {
+                transcription::whisper_backend::WhisperBackend::load(&path_clone)
+                    .map(|b| Arc::new(b) as Arc<dyn transcription::backend::TranscriptionBackend>)
+                    .map_err(|e| format!("{}", e))
+            },
+        );
 
     let handle = match load_handle {
         Ok(h) => h,
@@ -431,9 +434,9 @@ fn try_load_last_model(state: &Arc<AppState>) {
     };
 
     match handle.join() {
-        Ok(Ok(ctx)) => {
-            if let Ok(mut whisper_ctx) = state.whisper_context.lock() {
-                *whisper_ctx = Some(ctx);
+        Ok(Ok(backend)) => {
+            if let Ok(mut slot) = state.backend.lock() {
+                *slot = Some(backend);
             }
             if let Ok(mut model_path) = state.current_model_path.lock() {
                 *model_path = Some(path);

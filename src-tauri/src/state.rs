@@ -1,17 +1,18 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use cpal::Stream;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
-use whisper_rs::WhisperContext;
 
 use tokio::sync::mpsc;
 
 use crate::hotkey::FnKeyMonitorHandle;
 use crate::recording::RecordingCommand;
 use crate::settings::UserSettings;
+use crate::transcription::backend::TranscriptionBackend;
+use crate::transcription::streaming::StreamingHandle;
 use crate::vocabulary::Vocabulary;
 
 /// Shared application state managed by Tauri
@@ -26,10 +27,20 @@ pub struct AppState {
     pub capture_sample_rate: Mutex<u32>,
     /// The active cpal input stream (dropped to stop recording)
     pub active_stream: Mutex<Option<Stream>>,
-    /// Loaded whisper context (expensive to create, reused across transcriptions)
-    pub whisper_context: Mutex<Option<WhisperContext>>,
+    /// Loaded transcription backend, behind a Mutex of an Arc so the lock
+    /// is held only for the brief Arc clone — never across decode. The
+    /// streaming-preview worker and the final-on-stop pass each clone the
+    /// inner Arc out, then run inference without any lock held. (arc-swap
+    /// would be lock-free for reads but rejects unsized trait objects, and
+    /// the contention cost of std::sync::Mutex over a single Arc::clone is
+    /// negligible at our access pattern: ~1 read per 1.5s during recording
+    /// and 1 read per stop, with rare writes on model load.)
+    pub backend: Mutex<Option<Arc<dyn TranscriptionBackend>>>,
     /// Path to the currently loaded model
     pub current_model_path: Mutex<Option<PathBuf>>,
+    /// Per-recording streaming worker handle. Inserted in start_recording,
+    /// taken (cancelled + awaited) in stop_recording.
+    pub streaming_handle: Mutex<Option<StreamingHandle>>,
     /// The last transcription result
     pub last_transcription: Mutex<String>,
     /// User settings
@@ -68,8 +79,9 @@ impl AppState {
             audio_buffer: Mutex::new(Vec::new()),
             capture_sample_rate: Mutex::new(44_100),
             active_stream: Mutex::new(None),
-            whisper_context: Mutex::new(None),
+            backend: Mutex::new(None),
             current_model_path: Mutex::new(None),
+            streaming_handle: Mutex::new(None),
             last_transcription: Mutex::new(String::new()),
             settings: Mutex::new(UserSettings::load()),
             llama_backend: Mutex::new(None),

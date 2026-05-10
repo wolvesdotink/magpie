@@ -36,8 +36,8 @@ fn center_overlay_horizontally(window: &WebviewWindow) {
         let screen_width = monitor.size().width;
         let screen_height = monitor.size().height;
         let scale = monitor.scale_factor();
-        let window_width = 160.0; // logical pixels, matches tauri.conf.json
-        let window_height = 44.0; // logical pixels, matches tauri.conf.json
+        let window_width = 360.0; // logical pixels, matches tauri.conf.json
+        let window_height = 84.0; // logical pixels, matches tauri.conf.json
         let x = ((screen_width as f64 / scale) - window_width) / 2.0;
         let y = (screen_height as f64 / scale) - window_height - 38.0;
         let _ = window.set_position(tauri::Position::Logical(
