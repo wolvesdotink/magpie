@@ -185,15 +185,31 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Try to load previously selected correction model
     try_load_last_correction_model(&state);
 
-    // If no model is loaded, show the window so the user sees the model picker
+    // Show the main window on startup if anything blocks normal operation:
+    // no model loaded, or any of the three required permissions revoked.
+    // App.vue routes to the permissions guide when any perm is missing, so
+    // surfacing the window is enough — without this, a returning user who
+    // revoked a permission would press Fn and get no signal.
     {
         let has_model = state
             .whisper_context
             .lock()
             .map(|ctx| ctx.is_some())
             .unwrap_or(false);
-        if !has_model {
-            log::info!("No model loaded — showing setup window");
+        let perms = commands::check_permissions();
+        let missing_perms =
+            !perms.microphone || !perms.accessibility || !perms.input_monitoring;
+        if !has_model || missing_perms {
+            if !has_model {
+                log::info!("No model loaded — showing setup window");
+            } else {
+                log::info!(
+                    "Missing permissions on startup (mic={}, accessibility={}, input_monitoring={}) — showing window",
+                    perms.microphone,
+                    perms.accessibility,
+                    perms.input_monitoring,
+                );
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();

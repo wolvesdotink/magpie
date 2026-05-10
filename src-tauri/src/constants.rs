@@ -11,6 +11,13 @@ pub const DEFAULT_WHISPER_THREADS: i32 = 4;
 pub const MODEL_BASE_URL: &str =
     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
+/// Distil-Whisper variants live in their own HuggingFace repos because the
+/// distillations were not folded back into ggerganov/whisper.cpp.
+pub const DISTIL_WHISPER_SMALL_EN_BASE: &str =
+    "https://huggingface.co/distil-whisper/distil-small.en/resolve/main";
+pub const DISTIL_WHISPER_LARGE_V3_BASE: &str =
+    "https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main";
+
 /// Default number of threads for LLM inference
 pub const DEFAULT_LLM_THREADS: i32 = 4;
 

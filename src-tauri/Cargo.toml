@@ -36,7 +36,11 @@ cpal = "0.15"
 hound = "3.5"
 
 # Whisper
-whisper-rs = "0.13"
+# metal: route encode+decode through whisper.cpp's Metal GPU backend.
+# coreml: load a sibling `<model>-encoder.mlmodelc` package and run the
+# encoder on the Apple Neural Engine. Both are no-ops on non-Apple hosts,
+# so we keep them on for the only platform we ship to today.
+whisper-rs = { version = "0.13", features = ["metal", "coreml"] }
 
 # LLM (self-correction)
 # dynamic-link: builds llama.cpp as a separate dylib so its ggml symbols
@@ -60,6 +64,10 @@ core-foundation = "0.10"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["stream"] }
 futures-util = "0.3"
+
+# Used to unpack `*-encoder.mlmodelc.zip` packages downloaded alongside
+# whisper.cpp GGML weights so the CoreML encoder runs on the ANE.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

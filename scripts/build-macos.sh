@@ -420,33 +420,50 @@ if $SKIP_DMG; then
     log "Skipping DMG creation (--no-dmg)"
     DMG_PATH=""
 else
-    log "Creating DMG..."
+    # Styled DMG: branded background, custom volume icon, drop-link to /Applications.
+    # Window size, icon-size, and icon positions mirror src-tauri/tauri.conf.json's
+    # bundle.macOS.dmg block — keep them in sync if you change either one.
+    if ! command -v create-dmg >/dev/null; then
+        err "create-dmg not found. Install with: brew install create-dmg"
+    fi
+
+    log "Creating styled DMG..."
 
     VERSION="$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/package.json'))['version'])")"
     DMG_NAME="${APP_NAME}_${VERSION}_$(uname -m).dmg"
     DMG_PATH="$TARGET_DIR/bundle/dmg/$DMG_NAME"
 
-    # Create staging directory
-    STAGING_DIR="$(mktemp -d)"
-    trap "rm -rf '$STAGING_DIR'" EXIT
+    BACKGROUND="$PROJECT_ROOT/installer/dmg-background.tiff"
+    VOLUME_ICON="$PROJECT_ROOT/installer/volume-icon.icns"
+    [[ -f "$VOLUME_ICON" ]] || VOLUME_ICON="$PROJECT_ROOT/src-tauri/icons/icon.icns"
 
-    # Copy app and create Applications symlink
-    cp -R "$APP_BUNDLE" "$STAGING_DIR/"
-    ln -s /Applications "$STAGING_DIR/Applications"
+    [[ -f "$BACKGROUND" ]]   || err "Missing DMG background asset: $BACKGROUND. Run installer/build-assets.sh."
+    [[ -f "$VOLUME_ICON" ]]  || err "Missing volume icon: $VOLUME_ICON"
 
-    # Create the DMG output directory
+    # create-dmg copies the *contents* of its source folder into the disk image,
+    # so we stage just the .app inside a temp dir. The Applications drop link
+    # is added by create-dmg via --app-drop-link (no manual symlink needed).
+    DMG_STAGING="$(mktemp -d)"
+    trap "rm -rf '$DMG_STAGING'" EXIT
+    cp -R "$APP_BUNDLE" "$DMG_STAGING/"
+
     mkdir -p "$(dirname "$DMG_PATH")"
-
-    # Remove existing DMG if present
     rm -f "$DMG_PATH"
 
-    # Create compressed DMG
-    hdiutil create \
-        -volname "$APP_NAME" \
-        -srcfolder "$STAGING_DIR" \
-        -ov \
-        -format UDZO \
-        "$DMG_PATH"
+    create-dmg \
+        --volname "$APP_NAME" \
+        --volicon "$VOLUME_ICON" \
+        --background "$BACKGROUND" \
+        --window-pos 200 120 \
+        --window-size 660 400 \
+        --icon-size 128 \
+        --text-size 13 \
+        --icon "$APP_NAME.app" 180 170 \
+        --hide-extension "$APP_NAME.app" \
+        --app-drop-link 480 170 \
+        --no-internet-enable \
+        "$DMG_PATH" \
+        "$DMG_STAGING"
 
     log "DMG created at $DMG_PATH"
 
@@ -497,6 +514,25 @@ if [[ -d "$FRAMEWORKS_DIR" ]]; then
     FRAMEWORK_COUNT="$(find "$FRAMEWORKS_DIR" -name "*.dylib" ! -type l 2>/dev/null | wc -l | tr -d ' ')"
     echo ""
     echo "  Bundled dylibs: $FRAMEWORK_COUNT"
+fi
+
+# Confirm Apple Silicon acceleration frameworks are linked in.
+# whisper-rs's build script links CoreML.framework + Metal.framework when
+# the matching Cargo features are enabled. If they go missing, the app
+# silently falls back to CPU — so surface it loudly here.
+if [[ -f "$BINARY" ]]; then
+    LINKED_FRAMEWORKS="$(otool -L "$BINARY" 2>/dev/null || true)"
+    echo ""
+    if echo "$LINKED_FRAMEWORKS" | grep -q "/CoreML.framework/"; then
+        echo "  CoreML linkage: yes"
+    else
+        warn "CoreML.framework is NOT linked. Encoder will not run on the ANE."
+    fi
+    if echo "$LINKED_FRAMEWORKS" | grep -q "/Metal.framework/"; then
+        echo "  Metal linkage:  yes"
+    else
+        warn "Metal.framework is NOT linked. Whisper will run on CPU only."
+    fi
 fi
 
 if $UPDATER; then

@@ -6,9 +6,21 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 
 use crate::constants::DEFAULT_WHISPER_THREADS;
 
+// Compile-time backend summary, derived from the whisper-rs feature flags
+// active in this build. whisper.cpp also prints a runtime backend banner
+// via its own logger; this gives us a single grep-able line in our logs.
+#[cfg(target_os = "macos")]
+const BUILT_BACKENDS: &str = "Metal + CoreML/ANE (encoder via sibling .mlmodelc if present)";
+#[cfg(not(target_os = "macos"))]
+const BUILT_BACKENDS: &str = "CPU";
+
 /// Load a whisper model from disk
 pub fn load_model(model_path: &Path) -> Result<WhisperContext> {
-    log::info!("Loading whisper model from: {}", model_path.display());
+    log::info!(
+        "Loading whisper model from: {} (backend: {})",
+        model_path.display(),
+        BUILT_BACKENDS,
+    );
     let start = Instant::now();
 
     let params = WhisperContextParameters::default();

@@ -105,6 +105,12 @@ jobs:
       - name: Install JS dependencies
         run: bun install --frozen-lockfile
 
+      # create-dmg builds the styled installer (background image, custom volume
+      # icon, icon positions). Without it, scripts/build-macos.sh errors out at
+      # the DMG step. Pre-installed on macos-latest? No — must be installed.
+      - name: Install create-dmg
+        run: brew install create-dmg
+
       - name: Setup Rust (aarch64-apple-darwin)
         uses: dtolnay/rust-toolchain@stable
         with:

@@ -41,13 +41,38 @@ function isDownloaded(model: ModelInfo): boolean {
   return downloadedFiles.value.includes(model.filename);
 }
 
+/**
+ * Total on-disk footprint for the model — GGML weights plus the optional
+ * CoreML encoder package. Picker users shouldn't be surprised by an extra
+ * gigabyte after they hit download.
+ */
+function totalDownloadBytes(model: ModelInfo): number {
+  return model.sizeBytes + (model.encoderSizeBytes ?? 0);
+}
+
+/** Pareto-dominated entries hidden from the picker (still in the registry
+ * so existing users who selected them keep working). */
+const HIDDEN_FROM_PICKER = new Set(["medium.en"]);
+
 const displayedModels = computed(() =>
   models.value
+    .filter((m) => !HIDDEN_FROM_PICKER.has(m.id))
     .filter((m) =>
       activeTab.value === "english" ? m.englishOnly : !m.englishOnly,
     )
-    .sort((a, b) => a.sizeBytes - b.sizeBytes),
+    .sort((a, b) => {
+      // Recommended for the current tab floats to the top, then size ascending.
+      const tabTag = activeTab.value;
+      const aRec = a.recommendedFor === tabTag ? 0 : 1;
+      const bRec = b.recommendedFor === tabTag ? 0 : 1;
+      if (aRec !== bRec) return aRec - bRec;
+      return totalDownloadBytes(a) - totalDownloadBytes(b);
+    }),
 );
+
+function isRecommended(model: ModelInfo): boolean {
+  return model.recommendedFor === activeTab.value;
+}
 
 async function handleSelect(model: ModelInfo) {
   selectedModelId.value = model.id;
@@ -101,9 +126,14 @@ onMounted(async () => {
   );
 
   unlisteners.push(
-    await onModelDownloadComplete(() => {
+    await onModelDownloadComplete(async () => {
       downloading.value = false;
       downloadingModelId.value = null;
+      try {
+        downloadedFiles.value = await getDownloadedModels();
+      } catch (e) {
+        console.error("Failed to refresh downloaded models:", e);
+      }
     }),
   );
 });
@@ -173,9 +203,19 @@ onUnmounted(() => {
         >
           <!-- Name + meta row -->
           <div class="flex items-center justify-between gap-2">
-            <span class="text-[13px] font-semibold text-ink">
-              {{ model.displayName }}
-            </span>
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-[13px] font-semibold text-ink truncate">
+                {{ model.displayName }}
+              </span>
+              <span
+                v-if="isRecommended(model)"
+                class="text-[9px] font-bold uppercase tracking-wider
+                       px-1.5 py-0.5 rounded bg-gold/15 text-gold
+                       border border-gold/30 flex-shrink-0"
+              >
+                Recommended
+              </span>
+            </div>
             <div class="flex items-center gap-2 flex-shrink-0">
               <span
                 v-if="isDownloaded(model)"
@@ -199,7 +239,7 @@ onUnmounted(() => {
               <span
                 class="text-[11px] text-ink-faint font-medium tabular-nums"
               >
-                {{ formatBytes(model.sizeBytes) }}
+                {{ formatBytes(totalDownloadBytes(model)) }}
               </span>
             </div>
           </div>

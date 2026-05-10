@@ -246,15 +246,13 @@ function toggleSelfCorrection() {
 
 async function handleFinish() {
   try {
-    // Re-fetch to pick up changes made by backend (e.g. selected_model from download)
     const current = await getSettings();
-    const updated = {
+    await updateSettings({
       ...current,
       removeFillers: settings.value?.removeFillers ?? current.removeFillers,
       selfCorrection: settings.value?.selfCorrection ?? current.selfCorrection,
       setupComplete: true,
-    };
-    await updateSettings(updated);
+    });
   } catch (e) {
     console.error("Failed to save settings:", e);
   }

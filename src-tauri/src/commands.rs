@@ -355,12 +355,21 @@ pub async fn download_model(
     let model_info = registry::find_model(&model_id)
         .ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
+    let encoder = model_info
+        .encoder_url
+        .as_deref()
+        .map(|url| downloader::EncoderSpec {
+            url,
+            size_bytes: model_info.encoder_size_bytes.unwrap_or(0),
+        });
+
     let path = downloader::download_model(
         &app,
         &model_id,
         &model_info.url,
         &model_info.filename,
         model_info.size_bytes,
+        encoder,
     )
     .await
     .map_err(|e| format!("Download failed: {}", e))?;
@@ -436,6 +445,22 @@ pub fn delete_model_file(
         .ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
     storage::delete_model(&model_info.filename).map_err(|e| e.to_string())?;
+
+    // Best-effort cleanup of the sibling CoreML encoder directory if one
+    // was downloaded with this model.
+    let encoder_dir_name = downloader::encoder_dir_name_from_filename(&model_info.filename);
+    if let Ok(models_dir) = storage::models_dir() {
+        let encoder_path = models_dir.join(&encoder_dir_name);
+        if encoder_path.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&encoder_path) {
+                log::warn!(
+                    "Failed to remove CoreML encoder dir {}: {}",
+                    encoder_path.display(),
+                    e
+                );
+            }
+        }
+    }
 
     // If the deleted model was the active one, clear the selection
     {
@@ -621,13 +646,28 @@ pub fn get_settings(state: State<'_, Arc<AppState>>) -> crate::settings::UserSet
 #[tauri::command]
 pub fn update_settings(
     state: State<'_, Arc<AppState>>,
-    settings: crate::settings::UserSettings,
+    mut settings: crate::settings::UserSettings,
 ) {
     let mut current = state.settings.lock().unwrap();
+    // Model selections are owned by download_model / select_model, not by
+    // generic preference saves. A null in the incoming payload means "I
+    // don't know / I didn't touch this", not "clear the selection" — so
+    // preserve whatever the backend last set.
+    if settings.selected_model.is_none() {
+        settings.selected_model = current.selected_model.clone();
+    }
+    if settings.selected_correction_model.is_none() {
+        settings.selected_correction_model = current.selected_correction_model.clone();
+    }
     *current = settings;
     if let Err(e) = current.save() {
         log::error!("Failed to save settings: {}", e);
     }
+    log::info!(
+        "Settings updated; selected_model={:?}, selected_correction_model={:?}",
+        current.selected_model,
+        current.selected_correction_model
+    );
 }
 
 // ── Correction Model Management ───────────────────────────────────
@@ -657,6 +697,7 @@ pub async fn download_correction_model(
         &model_info.url,
         &model_info.filename,
         model_info.size_bytes,
+        None,
     )
     .await
     .map_err(|e| format!("Download failed: {}", e))?;

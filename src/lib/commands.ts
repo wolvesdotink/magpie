@@ -19,6 +19,15 @@ export interface ModelInfo {
   englishOnly: boolean;
   speedRating: number;
   accuracyRating: number;
+  /** Optional CoreML encoder package URL fetched alongside the GGML file. */
+  encoderUrl: string | null;
+  /** Approximate encoder package size in bytes (when present). */
+  encoderSizeBytes: number | null;
+  /**
+   * Tag the picker uses to highlight a recommended default. Currently
+   * "english" or "multilingual"; null means no special treatment.
+   */
+  recommendedFor: string | null;
 }
 
 export interface CorrectionModelInfo {

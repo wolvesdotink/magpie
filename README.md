@@ -2,7 +2,7 @@
 
 Open-source, local-first voice-to-text for macOS.
 
-Hold a hotkey, dictate, and the transcript is pasted at your cursor — entirely on-device. Powered by [Whisper](https://github.com/openai/whisper) for transcription and [llama.cpp](https://github.com/ggerganov/llama.cpp) for optional self-correction. No accounts, no cloud, no telemetry.
+Hold a hotkey, dictate, and the transcript is pasted at your cursor — entirely on-device. Transcription is powered by [Whisper](https://github.com/openai/whisper) and [Distil-Whisper](https://github.com/huggingface/distil-whisper) running through [whisper.cpp](https://github.com/ggerganov/whisper.cpp), with Metal GPU acceleration and Apple Neural Engine encoding via CoreML where available. Optional self-correction uses [llama.cpp](https://github.com/ggerganov/llama.cpp). No accounts, no cloud, no telemetry.
 
 **Website:** [wolves.ink/projects/magpie](https://wolves.ink/projects/magpie)
 **By:** [Wolves Software](https://wolves.ink)
