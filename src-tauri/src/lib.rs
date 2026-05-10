@@ -383,11 +383,117 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Load a `WhisperBackend` and run its CoreML self-test on a dedicated
+/// thread. Wrapping the FFI work in a thread isolates C++ exceptions and
+/// the abort-the-thread-only behavior we already rely on for `load`.
+///
+/// Returns `Ok((backend, self_test_result))` on success — the caller decides
+/// what to do with a failed self-test (typically: quarantine the encoder
+/// and call this helper again). Returns `Err` only when the model itself
+/// cannot be loaded.
+pub(crate) type LoadedBackend = Arc<dyn transcription::backend::TranscriptionBackend>;
+pub(crate) type SelfTestResult = Result<(), transcription::whisper_backend::SelfTestError>;
+pub(crate) type LoadOutcome = Result<(LoadedBackend, SelfTestResult), String>;
+
+pub(crate) fn load_with_self_test(path: &std::path::Path) -> LoadOutcome {
+    let path_clone = path.to_path_buf();
+    let handle = std::thread::Builder::new()
+        .name("whisper-load".into())
+        .spawn(move || -> LoadOutcome {
+            let backend = transcription::whisper_backend::WhisperBackend::load(&path_clone)
+                .map_err(|e| format!("{}", e))?;
+            let st = backend.self_test();
+            Ok((Arc::new(backend) as LoadedBackend, st))
+        })
+        .map_err(|e| format!("Failed to spawn whisper-load thread: {}", e))?;
+
+    handle
+        .join()
+        .map_err(|_| "whisper-load thread crashed".to_string())?
+}
+
+/// Quarantine a CoreML encoder that failed `self_test`: rename the
+/// `.mlmodelc` directory to `.mlmodelc.broken`, persist a per-model disable
+/// flag in settings, and surface the state via log + frontend event so the
+/// user sees the auto-dismissing error pill once.
+///
+/// All three load paths (startup, backfill reload, fresh download) use this
+/// helper so the recovery behavior is uniform.
+pub(crate) fn quarantine_encoder(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+    model_id: &str,
+    model_path: &std::path::Path,
+) {
+    let stem = model_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let encoder_dir = model_path.with_file_name(format!("{}-encoder.mlmodelc", stem));
+    let broken_dir = model_path.with_file_name(format!("{}-encoder.mlmodelc.broken", stem));
+
+    if encoder_dir.exists() {
+        // If a stale `.broken` from a prior quarantine is around, drop it
+        // first so the rename below is unambiguous.
+        if broken_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&broken_dir) {
+                log::warn!(
+                    "Failed to remove stale {}: {}",
+                    broken_dir.display(),
+                    e
+                );
+            }
+        }
+        match std::fs::rename(&encoder_dir, &broken_dir) {
+            Ok(()) => log::warn!(
+                "CoreML self-test failed for {} — quarantined encoder, falling back to Metal",
+                model_id
+            ),
+            Err(e) => log::error!(
+                "Failed to quarantine encoder at {}: {}. Falling back to Metal anyway.",
+                encoder_dir.display(),
+                e
+            ),
+        }
+    } else {
+        log::warn!(
+            "CoreML self-test failed for {} but encoder dir missing at {} — nothing to quarantine",
+            model_id,
+            encoder_dir.display()
+        );
+    }
+
+    if let Ok(mut settings) = state.settings.lock() {
+        if !settings.coreml_disabled_for_models.iter().any(|m| m == model_id) {
+            settings.coreml_disabled_for_models.push(model_id.to_string());
+            if let Err(e) = settings.save() {
+                log::error!("Failed to persist coreml_disabled_for_models: {}", e);
+            }
+        }
+    }
+
+    events::emit_event(
+        app,
+        events::event_names::TRANSCRIPTION_ERROR,
+        events::TranscriptionError {
+            error: format!(
+                "CoreML acceleration disabled for {} (encoder failed self-test). \
+                 Transcription will continue on Metal.",
+                model_id
+            ),
+        },
+    );
+}
+
 /// Try to load the last used model on startup.
 ///
 /// The actual whisper-rs FFI work runs in a dedicated thread so that a C++
 /// exception escaping the FFI boundary (which `catch_unwind` cannot catch)
 /// aborts only that thread instead of the entire application.
+///
+/// After load, runs `self_test`. If the CoreML encoder fails on this
+/// machine, the encoder is quarantined and the model is reloaded Metal-only
+/// so the user can keep working.
 ///
 /// After a successful load, schedules a background `.mlmodelc` backfill if
 /// the registry entry advertises a CoreML encoder URL but the sibling
@@ -418,58 +524,78 @@ fn try_load_last_model(state: &Arc<AppState>, app_handle: &tauri::AppHandle) {
         None => return,
     };
 
-    // Run the FFI-heavy work on a separate thread.  If whisper.cpp throws a
-    // C++ exception that escapes through the extern-"C" boundary, it will
-    // abort *this* thread rather than the main thread, keeping the app alive.
-    let path_clone = path.clone();
-    let load_handle = std::thread::Builder::new()
-        .name("whisper-load".into())
-        .spawn(
-            move || -> Result<Arc<dyn transcription::backend::TranscriptionBackend>, String> {
-                transcription::whisper_backend::WhisperBackend::load(&path_clone)
-                    .map(|b| Arc::new(b) as Arc<dyn transcription::backend::TranscriptionBackend>)
-                    .map_err(|e| format!("{}", e))
-            },
-        );
-
-    let handle = match load_handle {
-        Ok(h) => h,
+    let (backend, self_test) = match load_with_self_test(&path) {
+        Ok(pair) => pair,
         Err(e) => {
-            log::error!("Failed to spawn whisper-load thread: {}", e);
+            // Distinguishes thread crash from clean Rust load failure for
+            // the user-visible recovery: a crash usually means the GGML
+            // file itself is unreadable / version-mismatched, so we clear
+            // the selection to avoid a crash-loop on next launch. A clean
+            // failure leaves the selection alone.
+            if e.contains("crashed") {
+                log::error!(
+                    "whisper-load thread crashed while loading model {}. \
+                     Clearing selection to prevent crash loop.",
+                    model_id
+                );
+                if let Ok(mut settings) = state.settings.lock() {
+                    settings.selected_model = None;
+                    let _ = settings.save();
+                }
+            } else {
+                log::error!("Failed to auto-load model {}: {}", model_id, e);
+            }
             return;
         }
     };
 
-    match handle.join() {
-        Ok(Ok(backend)) => {
-            if let Ok(mut slot) = state.backend.lock() {
-                *slot = Some(backend);
+    if matches!(
+        self_test,
+        Err(transcription::whisper_backend::SelfTestError::CoreMLEncodeFail)
+    ) {
+        quarantine_encoder(app_handle, state, &model_id, &path);
+        // Drop the broken-encoder backend before reloading Metal-only.
+        drop(backend);
+        match load_with_self_test(&path) {
+            Ok((backend, _)) => {
+                if let Ok(mut slot) = state.backend.lock() {
+                    *slot = Some(backend);
+                }
+                if let Ok(mut model_path) = state.current_model_path.lock() {
+                    *model_path = Some(path.clone());
+                }
+                log::info!("Auto-loaded model: {} (Metal-only after quarantine)", model_id);
             }
-            if let Ok(mut model_path) = state.current_model_path.lock() {
-                *model_path = Some(path.clone());
-            }
-            log::info!("Auto-loaded model: {}", model_id);
-
-            // CoreML encoder backfill — non-blocking. See function comment.
-            maybe_backfill_coreml_encoder(app_handle, state.clone(), &info, model_id, path);
-        }
-        Ok(Err(e)) => {
-            log::error!("Failed to auto-load model {}: {}", model_id, e);
-        }
-        Err(_) => {
-            // The thread panicked or was aborted (e.g. foreign C++ exception).
-            // Clear the selection so we don't crash-loop, but keep the file.
-            log::error!(
-                "whisper-load thread crashed while loading model {}. \
-                 Clearing selection to prevent crash loop.",
-                model_id
-            );
-            if let Ok(mut settings) = state.settings.lock() {
-                settings.selected_model = None;
-                let _ = settings.save();
+            Err(e) => {
+                log::error!(
+                    "Failed to reload model {} after encoder quarantine: {}",
+                    model_id,
+                    e
+                );
             }
         }
+        return;
     }
+
+    if let Err(e) = self_test {
+        log::warn!(
+            "Self-test for model {} returned non-CoreML error: {}. \
+             Continuing — first real transcription will surface any issue.",
+            model_id,
+            e
+        );
+    }
+
+    if let Ok(mut slot) = state.backend.lock() {
+        *slot = Some(backend);
+    }
+    if let Ok(mut model_path) = state.current_model_path.lock() {
+        *model_path = Some(path.clone());
+    }
+    log::info!("Auto-loaded model: {}", model_id);
+
+    // CoreML encoder backfill — non-blocking. See function comment.
+    maybe_backfill_coreml_encoder(app_handle, state.clone(), &info, model_id, path);
 }
 
 /// If the loaded model's registry entry advertises a CoreML encoder URL
@@ -489,6 +615,25 @@ fn maybe_backfill_coreml_encoder(
         Some(u) => u,
         None => return, // Distil models etc. — no CoreML encoder
     };
+
+    // Respect a prior quarantine. If the user's machine has already failed
+    // the self-test for this model, redownloading the encoder won't help —
+    // it's the runtime CoreML/whisper.cpp combination that's broken, not
+    // the on-disk artifact. The "Repair Active Model" tray command clears
+    // this flag for an explicit retry.
+    let is_disabled = state
+        .settings
+        .lock()
+        .map(|s| s.coreml_disabled_for_models.iter().any(|m| m == &model_id))
+        .unwrap_or(false);
+    if is_disabled {
+        log::info!(
+            "CoreML disabled for {} (failed self-test previously) — skipping encoder backfill",
+            model_id
+        );
+        return;
+    }
+
     let encoder_size = info.encoder_size_bytes.unwrap_or(0);
     let models_dir = match models::storage::models_dir() {
         Ok(d) => d,
@@ -566,57 +711,78 @@ async fn reload_backend_after_backfill(
         return;
     }
 
-    let path_clone = path.clone();
-    let load_handle = std::thread::Builder::new()
-        .name("whisper-reload".into())
-        .spawn(
-            move || -> Result<Arc<dyn transcription::backend::TranscriptionBackend>, String> {
-                transcription::whisper_backend::WhisperBackend::load(&path_clone)
-                    .map(|b| Arc::new(b) as Arc<dyn transcription::backend::TranscriptionBackend>)
-                    .map_err(|e| format!("{}", e))
-            },
-        );
-
-    let handle = match load_handle {
-        Ok(h) => h,
+    let (backend, self_test) = match load_with_self_test(&path) {
+        Ok(pair) => pair,
         Err(e) => {
-            log::error!("Failed to spawn whisper-reload thread: {}", e);
+            log::error!(
+                "Backend reload after encoder backfill failed for {}: {}",
+                model_id,
+                e
+            );
             return;
         }
     };
 
-    match handle.join() {
-        Ok(Ok(backend)) => {
-            if let Ok(mut slot) = state.backend.lock() {
-                *slot = Some(backend);
+    if matches!(
+        self_test,
+        Err(transcription::whisper_backend::SelfTestError::CoreMLEncodeFail)
+    ) {
+        quarantine_encoder(&app, &state, &model_id, &path);
+        drop(backend);
+        match load_with_self_test(&path) {
+            Ok((backend, _)) => {
+                if let Ok(mut slot) = state.backend.lock() {
+                    *slot = Some(backend);
+                }
+                if let Ok(mut model_path) = state.current_model_path.lock() {
+                    *model_path = Some(path);
+                }
+                log::info!(
+                    "Backend reloaded for {} (Metal-only after backfill quarantine)",
+                    model_id
+                );
             }
-            if let Ok(mut model_path) = state.current_model_path.lock() {
-                *model_path = Some(path);
-            }
-            log::info!("Backend reloaded with CoreML encoder for {}", model_id);
-            let payload = events::AppStatePayload {
-                recording: state.is_recording(),
-                processing: state.is_processing(),
-                has_model: true,
-                last_transcription: state
-                    .last_transcription
-                    .lock()
-                    .ok()
-                    .map(|g| g.clone())
-                    .unwrap_or_default(),
-            };
-            events::emit_event(&app, events::event_names::APP_STATE_CHANGED, payload);
+            Err(e) => log::error!(
+                "Failed to reload model {} after encoder quarantine: {}",
+                model_id,
+                e
+            ),
         }
-        Ok(Err(e)) => log::error!(
-            "Backend reload after encoder backfill failed for {}: {}",
+        emit_app_state(&app, &state);
+        return;
+    }
+
+    if let Err(e) = self_test {
+        log::warn!(
+            "Self-test for {} after backfill returned non-CoreML error: {}",
             model_id,
             e
-        ),
-        Err(_) => log::error!(
-            "whisper-reload thread crashed for model {} after backfill",
-            model_id
-        ),
+        );
     }
+
+    if let Ok(mut slot) = state.backend.lock() {
+        *slot = Some(backend);
+    }
+    if let Ok(mut model_path) = state.current_model_path.lock() {
+        *model_path = Some(path);
+    }
+    log::info!("Backend reloaded with CoreML encoder for {}", model_id);
+    emit_app_state(&app, &state);
+}
+
+fn emit_app_state(app: &tauri::AppHandle, state: &Arc<AppState>) {
+    let payload = events::AppStatePayload {
+        recording: state.is_recording(),
+        processing: state.is_processing(),
+        has_model: true,
+        last_transcription: state
+            .last_transcription
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default(),
+    };
+    events::emit_event(app, events::event_names::APP_STATE_CHANGED, payload);
 }
 
 /// Public entry point used by `commands.rs::stop_recording` to drain a

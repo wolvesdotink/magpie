@@ -10,12 +10,9 @@ use crate::hotkey;
 use crate::models::{downloader, registry, storage};
 use crate::output;
 use crate::state::AppState;
-use crate::transcription::backend::{
-    CancellationToken, TranscribeMode, TranscribeOptions, TranscriptionBackend,
-};
+use crate::transcription::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
 use crate::transcription::postprocess;
 use crate::transcription::streaming;
-use crate::transcription::whisper_backend::WhisperBackend;
 use crate::overlay;
 use crate::tray::{self, TrayState};
 use crate::vocabulary::{VocabularyEntry, VocabularySource};
@@ -571,15 +568,37 @@ fn load_model_internal(
     path: &std::path::Path,
     model_id: &str,
 ) -> Result<(), String> {
-    let backend =
-        WhisperBackend::load(path).map_err(|e| format!("Failed to load model: {}", e))?;
+    let (backend, self_test) = crate::load_with_self_test(path)
+        .map_err(|e| format!("Failed to load model: {}", e))?;
+
+    let backend = match self_test {
+        Err(crate::transcription::whisper_backend::SelfTestError::CoreMLEncodeFail) => {
+            // Quarantine the just-loaded encoder and reload Metal-only.
+            // Drop the broken-encoder backend before reloading so
+            // whisper.cpp picks up the absence of the `.mlmodelc`.
+            crate::quarantine_encoder(app, state.inner(), model_id, path);
+            drop(backend);
+            let (fresh, _) = crate::load_with_self_test(path)
+                .map_err(|e| format!("Failed to reload model after encoder quarantine: {}", e))?;
+            fresh
+        }
+        Err(e) => {
+            log::warn!(
+                "Self-test for model {} returned non-CoreML error: {}. Continuing.",
+                model_id,
+                e
+            );
+            backend
+        }
+        Ok(()) => backend,
+    };
 
     {
         let mut slot = state
             .backend
             .lock()
             .map_err(|e| format!("backend mutex poisoned: {}", e))?;
-        *slot = Some(Arc::new(backend) as Arc<dyn TranscriptionBackend>);
+        *slot = Some(backend);
     }
     {
         let mut model_path = state.current_model_path.lock().unwrap();
@@ -697,13 +716,45 @@ pub async fn run_repair_active_model(app: &AppHandle) {
         }
     };
 
+    // Clear any prior quarantine before re-fetching: lift the disable flag,
+    // and drop a stale `.mlmodelc.broken` from the previous self-test failure
+    // so the post-download reload can't pick the broken artifact back up.
+    {
+        let stem = model_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        let broken_dir = model_path.with_file_name(format!("{}-encoder.mlmodelc.broken", stem));
+        if broken_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&broken_dir) {
+                log::warn!(
+                    "Repair Active Model: could not remove {}: {}",
+                    broken_dir.display(),
+                    e
+                );
+            } else {
+                log::info!("Repair Active Model: removed stale {}", broken_dir.display());
+            }
+        }
+        if let Ok(mut settings) = state.settings.lock() {
+            let before = settings.coreml_disabled_for_models.len();
+            settings.coreml_disabled_for_models.retain(|m| m != &model_id);
+            if settings.coreml_disabled_for_models.len() != before {
+                if let Err(e) = settings.save() {
+                    log::error!("Failed to persist cleared CoreML disable flag: {}", e);
+                }
+            }
+        }
+    }
+
     log::info!("Repairing model '{}' — re-downloading CoreML encoder", model_id);
     match downloader::download_encoder_only(app, &model_id, &encoder_url, encoder_size, &encoder_dir).await {
         Ok(()) => {
             log::info!("Repair Active Model: encoder restored for '{}'; reloading backend", model_id);
             // Reuse the same idle-aware reload helper used by the startup
             // backfill path. Because we early-returned on busy state above,
-            // the reload runs synchronously here.
+            // the reload runs synchronously here. The reload itself runs the
+            // self-test and re-quarantines the encoder if it still fails.
             crate::reload_backend_after_backfill_public(app.clone(), state.inner().clone(), model_id, model_path).await;
         }
         Err(e) => {

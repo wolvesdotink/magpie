@@ -54,6 +54,14 @@ pub struct UserSettings {
     /// Whether the first-launch setup wizard has been completed
     #[serde(default)]
     pub setup_complete: bool,
+    /// Model IDs whose CoreML encoder failed the post-load self-test on
+    /// this machine. The encoder dir on disk has been quarantined to
+    /// `<stem>-encoder.mlmodelc.broken`; the backfill path skips redownload
+    /// for any model in this list, and load skips the self-test re-run.
+    /// Cleared per-model by `repair_active_model` to retry after a macOS
+    /// or whisper.cpp update.
+    #[serde(default)]
+    pub coreml_disabled_for_models: Vec<String>,
 }
 
 impl Default for UserSettings {
@@ -76,6 +84,7 @@ impl Default for UserSettings {
             selected_correction_model: None,
             vocabulary_learning: true,
             setup_complete: false,
+            coreml_disabled_for_models: Vec::new(),
         }
     }
 }

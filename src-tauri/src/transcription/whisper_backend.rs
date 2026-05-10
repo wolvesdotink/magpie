@@ -26,6 +26,25 @@ const BUILT_BACKENDS: &str = "Metal + CoreML/ANE (encoder via sibling .mlmodelc 
 #[cfg(not(target_os = "macos"))]
 const BUILT_BACKENDS: &str = "CPU";
 
+/// Outcome of a `WhisperBackend::self_test`. Distinguishes the specific
+/// CoreML-encode failure mode from generic load/runtime errors so the
+/// caller can quarantine the `.mlmodelc` instead of giving up on the
+/// model entirely.
+#[derive(thiserror::Error, Debug)]
+pub enum SelfTestError {
+    /// whisper.cpp returned `GenericError(-6)` ("failed to encode") on a
+    /// trivial silent buffer. On macOS this is the diagnostic signature of
+    /// a CoreML encoder that loaded but cannot run — typically a Core ML /
+    /// whisper.cpp ABI mismatch on a recent macOS build.
+    #[error("CoreML encoder failed self-test (whisper.cpp returned -6 on silence)")]
+    CoreMLEncodeFail,
+    /// Any other failure from `transcribe()`. Treated as a load-level error
+    /// by the caller — the model is unusable but the encoder isn't
+    /// necessarily at fault, so we don't quarantine on this path.
+    #[error("self-test failed: {0}")]
+    Other(String),
+}
+
 pub struct WhisperBackend {
     ctx: WhisperContext,
 }
@@ -92,6 +111,34 @@ impl WhisperBackend {
 
         log::info!("Model loaded in {:?}", start.elapsed());
         Ok(Self { ctx })
+    }
+
+    /// Run a 1 s silence buffer through the encode+decode pipeline so we
+    /// surface broken CoreML encoders before the user hits one mid-dictation.
+    /// Whisper-rs has no API to disable CoreML alone (`use_gpu` gates Metal
+    /// too) so a runtime check is the only way to catch the case where
+    /// `whisper_coreml_init` succeeds but `whisper_coreml_encode` fails — the
+    /// `GenericError(-6)` we see on macOS 26.4 / M1 Max despite a
+    /// structurally-valid `.mlmodelc` on disk.
+    pub fn self_test(&self) -> Result<(), SelfTestError> {
+        let silence = vec![0.0f32; WHISPER_SAMPLE_RATE as usize];
+        let opts = TranscribeOptions {
+            language: None,
+            initial_prompt: None,
+            mode: TranscribeMode::PartialPreview,
+        };
+        let cancel = CancellationToken::new();
+        match self.transcribe(&silence, &opts, &cancel) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("GenericError(-6)") || msg.contains("failed to encode") {
+                    Err(SelfTestError::CoreMLEncodeFail)
+                } else {
+                    Err(SelfTestError::Other(msg))
+                }
+            }
+        }
     }
 }
 
