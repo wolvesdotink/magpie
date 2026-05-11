@@ -45,11 +45,15 @@ fn configure_for_fullscreen_spaces(window: &WebviewWindow) {
         }
     };
 
+    let behavior: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY | STATIONARY;
     unsafe {
-        let behavior: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY | STATIONARY;
         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
         let _: () = msg_send![ns_window, setLevel: NS_STATUS_WINDOW_LEVEL];
     }
+    log::debug!(
+        "overlay: applied fullscreen-space configuration (level=25, behavior={:#x})",
+        behavior
+    );
 }
 
 /// Show the overlay window (called when recording starts).
@@ -58,6 +62,13 @@ pub fn show_overlay(app: &AppHandle) {
         // Re-center in case monitor setup changed
         center_overlay_horizontally(&window);
         let _ = window.show();
+
+        // Re-apply collection behavior + level after show(). Tauri's internal
+        // show path re-asserts `alwaysOnTop` (NSFloatingWindowLevel = 3) and
+        // resets collectionBehavior, which would otherwise hide the pill the
+        // moment another app owns a fullscreen Space.
+        #[cfg(target_os = "macos")]
+        configure_for_fullscreen_spaces(&window);
     }
 }
 

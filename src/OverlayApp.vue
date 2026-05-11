@@ -432,7 +432,6 @@ const barHeights = computed(() => {
 .spinner {
   width: 14px;
   height: 14px;
-  animation: spin 1s linear infinite;
 }
 
 .spinner-track {
@@ -447,10 +446,6 @@ const barHeights = computed(() => {
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-dasharray: 12 32;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* ---- Label base ---- */
