@@ -60,6 +60,7 @@ pub fn run() {
             commands::get_available_models,
             commands::get_downloaded_models,
             commands::download_model,
+            commands::cancel_download,
             commands::select_model,
             commands::delete_model_file,
             commands::check_permissions,
@@ -553,6 +554,7 @@ fn maybe_backfill_coreml_encoder(
             &encoder_url,
             encoder_size,
             &encoder_dir,
+            None,
         )
         .await
         {

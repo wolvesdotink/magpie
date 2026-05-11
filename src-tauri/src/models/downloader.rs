@@ -9,6 +9,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::constants;
 use crate::events::{self, event_names, ModelDownloadProgress};
+use crate::transcription::backend::CancellationToken;
 
 /// Optional CoreML encoder package to fetch alongside the GGML weights.
 pub struct EncoderSpec<'a> {
@@ -17,6 +18,16 @@ pub struct EncoderSpec<'a> {
     /// GGML download and the encoder download (GGML gets the lion's share
     /// since it is typically 5–10× larger than the encoder package).
     pub size_bytes: u64,
+}
+
+/// Result of a download call. Cancellation is split out from real failures
+/// so callers can suppress error UI when the user explicitly aborted.
+#[derive(Debug, thiserror::Error)]
+pub enum DownloadError {
+    #[error("download cancelled")]
+    Cancelled,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Download a model file from the given URL to the models directory.
@@ -36,13 +47,14 @@ pub async fn download_model(
     filename: &str,
     expected_bytes: u64,
     encoder: Option<EncoderSpec<'_>>,
-) -> Result<PathBuf> {
-    let dest_path = super::storage::model_path(filename)?;
+    cancel: Option<&CancellationToken>,
+) -> std::result::Result<PathBuf, DownloadError> {
+    let dest_path = super::storage::model_path(filename).map_err(DownloadError::Other)?;
     let temp_path = dest_path.with_extension("bin.downloading");
 
     log::info!("Downloading model {} from {}", model_id, url);
 
-    let client = build_client()?;
+    let client = build_client().map_err(DownloadError::Other)?;
 
     // Weight progress so encoder download contributes the tail end of the
     // 0–100% range. If there is no encoder, GGML alone is the full range.
@@ -55,7 +67,7 @@ pub async fn download_model(
     };
 
     // Inner block so we can clean up the temp file on any error
-    let download_result: Result<(PathBuf, u64)> = async {
+    let download_result: std::result::Result<(PathBuf, u64), DownloadError> = async {
         let response = client
             .get(url)
             .send()
@@ -74,6 +86,9 @@ pub async fn download_model(
         let mut last_progress_pct: f64 = -1.0;
 
         while let Some(chunk) = stream.next().await {
+            if cancel.map_or(false, |c| c.is_cancelled()) {
+                return Err(DownloadError::Cancelled);
+            }
             let chunk = chunk.context("Download stream error")?;
             file.write_all(&chunk)
                 .await
@@ -104,25 +119,25 @@ pub async fn download_model(
             }
         }
 
-        file.flush().await?;
+        file.flush().await.context("Failed to flush temp file")?;
         drop(file);
 
         // Validate downloaded size against Content-Length
         if total_bytes > 0 && downloaded != total_bytes {
-            anyhow::bail!(
+            return Err(DownloadError::Other(anyhow::anyhow!(
                 "Incomplete download: got {} bytes, expected {} from Content-Length",
                 downloaded,
                 total_bytes,
-            );
+            )));
         }
 
         // Validate against expected size from registry (approximate — allow 10% tolerance)
         if expected_bytes > 0 && (downloaded as f64) < (expected_bytes as f64 * 0.9) {
-            anyhow::bail!(
+            return Err(DownloadError::Other(anyhow::anyhow!(
                 "Downloaded file too small: got {} bytes, expected ~{} bytes",
                 downloaded,
                 expected_bytes,
-            );
+            )));
         }
 
         // Rename temp file to final path (atomic on same filesystem)
@@ -151,10 +166,14 @@ pub async fn download_model(
 
     // Best-effort encoder fetch. Any failure here is a perf regression
     // (Metal-only fallback), not a correctness issue, so we keep the
-    // GGML on disk and log instead of bubbling up.
+    // GGML on disk and log instead of bubbling up. The one exception is
+    // user cancellation — propagate that so the GGML on disk also gets
+    // cleaned up by the caller's normal cancel flow.
     if let Some(spec) = encoder {
         let encoder_dir_name = encoder_dir_name_from_filename(filename);
-        let encoder_dest = super::storage::models_dir()?.join(&encoder_dir_name);
+        let encoder_dest = super::storage::models_dir()
+            .map_err(DownloadError::Other)?
+            .join(&encoder_dir_name);
 
         if encoder_dest.exists() {
             log::info!(
@@ -170,6 +189,7 @@ pub async fn download_model(
                 &encoder_dest,
                 &client,
                 ggml_progress_share,
+                cancel,
             )
             .await
             {
@@ -179,7 +199,14 @@ pub async fn download_model(
                         encoder_dest.display()
                     );
                 }
-                Err(e) => {
+                Err(DownloadError::Cancelled) => {
+                    // Cancellation during encoder fetch: also remove the
+                    // GGML we already wrote, so a re-download starts clean.
+                    let _ = tokio::fs::remove_dir_all(&encoder_dest).await;
+                    let _ = tokio::fs::remove_file(&final_path).await;
+                    return Err(DownloadError::Cancelled);
+                }
+                Err(DownloadError::Other(e)) => {
                     log::warn!(
                         "CoreML encoder fetch failed for {} ({}). Model will run on Metal without ANE acceleration.",
                         model_id,
@@ -209,8 +236,9 @@ pub async fn download_encoder_only(
     url: &str,
     expected_bytes: u64,
     encoder_dest: &Path,
-) -> Result<()> {
-    let client = build_client()?;
+    cancel: Option<&CancellationToken>,
+) -> std::result::Result<(), DownloadError> {
+    let client = build_client().map_err(DownloadError::Other)?;
     if encoder_dest.exists() {
         log::info!(
             "Removing existing encoder dir before refetch: {}",
@@ -220,7 +248,17 @@ pub async fn download_encoder_only(
     }
     // ggml_progress_share=0.0 means the encoder owns the entire 0–100% range,
     // since there's no GGML download in this code path.
-    fetch_and_unpack_encoder(app, model_id, url, expected_bytes, encoder_dest, &client, 0.0).await
+    fetch_and_unpack_encoder(
+        app,
+        model_id,
+        url,
+        expected_bytes,
+        encoder_dest,
+        &client,
+        0.0,
+        cancel,
+    )
+    .await
 }
 
 fn build_client() -> Result<reqwest::Client> {
@@ -247,7 +285,8 @@ async fn fetch_and_unpack_encoder(
     dest_dir: &Path,
     client: &reqwest::Client,
     ggml_progress_share: f64,
-) -> Result<()> {
+    cancel: Option<&CancellationToken>,
+) -> std::result::Result<(), DownloadError> {
     log::info!("Downloading CoreML encoder for {} from {}", model_id, url);
 
     let response = client
@@ -265,6 +304,9 @@ async fn fetch_and_unpack_encoder(
     let mut last_progress_pct: f64 = -1.0;
 
     while let Some(chunk) = stream.next().await {
+        if cancel.map_or(false, |c| c.is_cancelled()) {
+            return Err(DownloadError::Cancelled);
+        }
         let chunk = chunk.context("Encoder download stream error")?;
         buf.extend_from_slice(&chunk);
         downloaded += chunk.len() as u64;
@@ -295,11 +337,11 @@ async fn fetch_and_unpack_encoder(
     }
 
     if total_bytes > 0 && downloaded != total_bytes {
-        anyhow::bail!(
+        return Err(DownloadError::Other(anyhow::anyhow!(
             "Incomplete encoder download: got {} bytes, expected {}",
             downloaded,
             total_bytes,
-        );
+        )));
     }
 
     // Unpack into a temp dir adjacent to the destination, then rename
@@ -319,6 +361,8 @@ async fn fetch_and_unpack_encoder(
         .context("Failed to create encoder unpack dir")?;
 
     // zip crate is sync, so do the extraction on a blocking thread.
+    // Note: cancellation is not honored during this stage — unzip runs to
+    // completion (typically a few seconds) before the next cancel check.
     let temp_dir_clone = temp_dir.clone();
     let dest_name = dest_dir
         .file_name()
@@ -352,10 +396,10 @@ async fn fetch_and_unpack_encoder(
         .iter()
         .any(|m| dest_dir.join(m).exists());
     if !has_marker {
-        anyhow::bail!(
+        return Err(DownloadError::Other(anyhow::anyhow!(
             "Unpacked encoder at {} is missing expected CoreML markers",
             dest_dir.display()
-        );
+        )));
     }
 
     Ok(())

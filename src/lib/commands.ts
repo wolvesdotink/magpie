@@ -99,6 +99,9 @@ export const getDownloadedModels = () =>
 export const downloadModel = (modelId: string) =>
   invoke("download_model", { modelId });
 
+export const cancelDownload = (modelId: string) =>
+  invoke("cancel_download", { modelId });
+
 export const selectModel = (modelId: string) =>
   invoke("select_model", { modelId });
 

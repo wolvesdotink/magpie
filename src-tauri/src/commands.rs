@@ -456,16 +456,45 @@ pub async fn download_model(
             size_bytes: model_info.encoder_size_bytes.unwrap_or(0),
         });
 
-    let path = downloader::download_model(
+    // Register a cancellation token so `cancel_download` can interrupt
+    // the stream loop. Removed unconditionally on every exit path below.
+    let cancel = CancellationToken::new();
+    {
+        let mut active = state.active_downloads.lock().unwrap();
+        active.insert(model_id.clone(), cancel.clone());
+    }
+
+    let result = downloader::download_model(
         &app,
         &model_id,
         &model_info.url,
         &model_info.filename,
         model_info.size_bytes,
         encoder,
+        Some(&cancel),
     )
-    .await
-    .map_err(|e| format!("Download failed: {}", e))?;
+    .await;
+
+    {
+        let mut active = state.active_downloads.lock().unwrap();
+        active.remove(&model_id);
+    }
+
+    let path = match result {
+        Ok(p) => p,
+        Err(downloader::DownloadError::Cancelled) => {
+            log::info!("Download of {} cancelled by user", model_id);
+            events::emit_event(
+                &app,
+                event_names::MODEL_DOWNLOAD_CANCELLED,
+                serde_json::json!({ "modelId": model_id }),
+            );
+            return Err("Download cancelled".to_string());
+        }
+        Err(downloader::DownloadError::Other(e)) => {
+            return Err(format!("Download failed: {}", e));
+        }
+    };
 
     events::emit_event(
         &app,
@@ -492,6 +521,24 @@ pub async fn download_model(
     // Refresh tray menu so the new model appears as downloaded
     tray::rebuild_tray_menu(&app);
 
+    Ok(())
+}
+
+/// Signals the in-flight download for `model_id` to abort. Idempotent —
+/// returns Ok even if no download is currently registered (covers the race
+/// between cancel and completion).
+#[tauri::command]
+pub fn cancel_download(
+    state: State<'_, Arc<AppState>>,
+    model_id: String,
+) -> Result<(), String> {
+    let active = state.active_downloads.lock().unwrap();
+    if let Some(token) = active.get(&model_id) {
+        token.cancel();
+        log::info!("Cancel requested for download {}", model_id);
+    } else {
+        log::debug!("Cancel requested for {} but no active download", model_id);
+    }
     Ok(())
 }
 
@@ -737,7 +784,7 @@ pub async fn run_repair_active_model(app: &AppHandle) {
     }
 
     log::info!("Repairing model '{}' — re-downloading CoreML encoder", model_id);
-    match downloader::download_encoder_only(app, &model_id, &encoder_url, encoder_size, &encoder_dir).await {
+    match downloader::download_encoder_only(app, &model_id, &encoder_url, encoder_size, &encoder_dir, None).await {
         Ok(()) => {
             log::info!("Repair Active Model: encoder restored for '{}'; reloading backend", model_id);
             // Reuse the same idle-aware reload helper used by the startup
@@ -1007,16 +1054,45 @@ pub async fn download_correction_model(
     let model_info = correction::registry::find_correction_model(&model_id)
         .ok_or_else(|| format!("Unknown correction model: {}", model_id))?;
 
-    let path = downloader::download_model(
+    // Register a cancellation token so `cancel_download` can interrupt
+    // the stream loop. Removed unconditionally on every exit path below.
+    let cancel = CancellationToken::new();
+    {
+        let mut active = state.active_downloads.lock().unwrap();
+        active.insert(model_id.clone(), cancel.clone());
+    }
+
+    let result = downloader::download_model(
         &app,
         &model_id,
         &model_info.url,
         &model_info.filename,
         model_info.size_bytes,
         None,
+        Some(&cancel),
     )
-    .await
-    .map_err(|e| format!("Download failed: {}", e))?;
+    .await;
+
+    {
+        let mut active = state.active_downloads.lock().unwrap();
+        active.remove(&model_id);
+    }
+
+    let path = match result {
+        Ok(p) => p,
+        Err(downloader::DownloadError::Cancelled) => {
+            log::info!("Correction-model download of {} cancelled by user", model_id);
+            events::emit_event(
+                &app,
+                event_names::MODEL_DOWNLOAD_CANCELLED,
+                serde_json::json!({ "modelId": model_id }),
+            );
+            return Err("Download cancelled".to_string());
+        }
+        Err(downloader::DownloadError::Other(e)) => {
+            return Err(format!("Download failed: {}", e));
+        }
+    };
 
     events::emit_event(
         &app,

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -11,7 +12,7 @@ use tokio::sync::mpsc;
 use crate::hotkey::FnKeyMonitorHandle;
 use crate::recording::RecordingCommand;
 use crate::settings::UserSettings;
-use crate::transcription::backend::TranscriptionBackend;
+use crate::transcription::backend::{CancellationToken, TranscriptionBackend};
 use crate::transcription::streaming::StreamingHandle;
 use crate::vocabulary::Vocabulary;
 
@@ -74,6 +75,11 @@ pub struct AppState {
     /// WhisperContext so subsequent transcriptions pick up ANE acceleration.
     /// Stored as `(model_id, model_path)` so the reload knows what to load.
     pub pending_reload: Mutex<Option<(String, PathBuf)>>,
+    /// In-flight model downloads keyed by `model_id`. The `download_model`
+    /// command registers a token on entry and removes it on exit; the
+    /// `cancel_download` command flips the token's flag, which the streaming
+    /// loop in `downloader::download_model` checks each chunk.
+    pub active_downloads: Mutex<HashMap<String, CancellationToken>>,
 }
 
 // Safety: Stream is Send but not Sync by default in cpal,
@@ -104,6 +110,7 @@ impl AppState {
             recording_tx: Mutex::new(None),
             current_shortcut: Mutex::new(None),
             pending_reload: Mutex::new(None),
+            active_downloads: Mutex::new(HashMap::new()),
         }
     }
 

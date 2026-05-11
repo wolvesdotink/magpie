@@ -11,6 +11,7 @@ pub mod event_names {
     pub const PARTIAL_TRANSCRIPTION: &str = "partial-transcription";
     pub const MODEL_DOWNLOAD_PROGRESS: &str = "model-download-progress";
     pub const MODEL_DOWNLOAD_COMPLETE: &str = "model-download-complete";
+    pub const MODEL_DOWNLOAD_CANCELLED: &str = "model-download-cancelled";
     pub const APP_STATE_CHANGED: &str = "app-state-changed";
     pub const PERMISSIONS_STATUS: &str = "permissions-status";
     pub const CORRECTION_STARTED: &str = "correction-started";

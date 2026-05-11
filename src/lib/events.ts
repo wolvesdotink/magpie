@@ -99,6 +99,14 @@ export function onModelDownloadComplete(
   });
 }
 
+export function onModelDownloadCancelled(
+  callback: (data: { modelId: string }) => void,
+): Promise<UnlistenFn> {
+  return listen("model-download-cancelled", (event) => {
+    callback(event.payload as { modelId: string });
+  });
+}
+
 export function onAppStateChanged(
   callback: (state: AppStatePayload) => void,
 ): Promise<UnlistenFn> {

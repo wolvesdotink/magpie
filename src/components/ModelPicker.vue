@@ -5,10 +5,15 @@ import {
   getDownloadedModels,
   getSettings,
   downloadModel,
+  cancelDownload,
   selectModel,
   type ModelInfo,
 } from "@/lib/commands";
-import { onModelDownloadProgress, onModelDownloadComplete } from "@/lib/events";
+import {
+  onModelDownloadProgress,
+  onModelDownloadComplete,
+  onModelDownloadCancelled,
+} from "@/lib/events";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 const emit = defineEmits<{
@@ -99,9 +104,22 @@ async function handleDownload() {
     await downloadModel(selectedModelId.value);
     emit("modelReady");
   } catch (e) {
-    error.value = `Download failed: ${e}`;
+    // User-initiated cancel surfaces as a rejection too — suppress it; the
+    // cancelled listener resets state, so this branch only fires on real errors.
+    if (!String(e).toLowerCase().includes("cancel")) {
+      error.value = `Download failed: ${e}`;
+    }
     downloading.value = false;
     downloadingModelId.value = null;
+  }
+}
+
+async function handleCancel() {
+  if (!downloadingModelId.value) return;
+  try {
+    await cancelDownload(downloadingModelId.value);
+  } catch (e) {
+    console.error("Cancel failed:", e);
   }
 }
 
@@ -134,6 +152,15 @@ onMounted(async () => {
       } catch (e) {
         console.error("Failed to refresh downloaded models:", e);
       }
+    }),
+  );
+
+  unlisteners.push(
+    await onModelDownloadCancelled(() => {
+      downloading.value = false;
+      downloadingModelId.value = null;
+      downloadProgress.value = 0;
+      error.value = null;
     }),
   );
 });
@@ -316,6 +343,31 @@ onUnmounted(() => {
         >
           {{ downloadProgress.toFixed(0) }}%
         </span>
+        <button
+          type="button"
+          aria-label="Cancel download"
+          title="Cancel download"
+          class="flex items-center justify-center w-[18px] h-[18px] rounded-full
+                 bg-raised border border-edge text-ink-faint
+                 transition-colors duration-150
+                 hover:bg-panel hover:text-ink hover:border-edge-strong
+                 active:scale-95"
+          @click="handleCancel"
+        >
+          <svg
+            width="9"
+            height="9"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       <!-- ── Action Button ── -->

@@ -22,12 +22,9 @@ async function closeWindow() {
       <!-- Custom draggable title bar -->
       <div
         data-tauri-drag-region
-        class="flex items-center justify-between px-5 pt-4 pb-2"
+        class="flex items-center justify-between px-5 pt-4 pb-3 min-h-[44px] cursor-grab active:cursor-grabbing select-none"
       >
-        <h1
-          data-tauri-drag-region
-          class="text-[15px] font-bold tracking-tight text-ink select-none"
-        >
+        <h1 class="text-[15px] font-bold tracking-tight text-ink">
           Settings
         </h1>
         <button

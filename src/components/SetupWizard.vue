@@ -10,13 +10,18 @@ import {
   getSettings,
   updateSettings,
   downloadModel,
+  cancelDownload,
   selectModel,
   restartFnKeyMonitor,
   restartApp,
   type ModelInfo,
   type UserSettings,
 } from "@/lib/commands";
-import { onModelDownloadProgress, onModelDownloadComplete } from "@/lib/events";
+import {
+  onModelDownloadProgress,
+  onModelDownloadComplete,
+  onModelDownloadCancelled,
+} from "@/lib/events";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 const emit = defineEmits<{
@@ -218,9 +223,21 @@ async function handleDownloadAndContinue() {
     await downloadModel(selectedModelId.value);
     nextStep();
   } catch (e) {
-    modelError.value = `Download failed: ${e}`;
+    // Suppress cancel-as-rejection — the cancelled listener resets state.
+    if (!String(e).toLowerCase().includes("cancel")) {
+      modelError.value = `Download failed: ${e}`;
+    }
     downloading.value = false;
     downloadingModelId.value = null;
+  }
+}
+
+async function handleCancelDownload() {
+  if (!downloadingModelId.value) return;
+  try {
+    await cancelDownload(downloadingModelId.value);
+  } catch (e) {
+    console.error("Cancel failed:", e);
   }
 }
 
@@ -293,6 +310,15 @@ onMounted(async () => {
     await onModelDownloadComplete(() => {
       downloading.value = false;
       downloadingModelId.value = null;
+    }),
+  );
+
+  unlisteners.push(
+    await onModelDownloadCancelled(() => {
+      downloading.value = false;
+      downloadingModelId.value = null;
+      downloadProgress.value = 0;
+      modelError.value = null;
     }),
   );
 });
@@ -820,6 +846,31 @@ onUnmounted(() => {
         >
           {{ downloadProgress.toFixed(0) }}%
         </span>
+        <button
+          type="button"
+          aria-label="Cancel download"
+          title="Cancel download"
+          class="flex items-center justify-center w-[18px] h-[18px] rounded-full
+                 bg-raised border border-edge text-ink-faint
+                 transition-colors duration-150
+                 hover:bg-panel hover:text-ink hover:border-edge-strong
+                 active:scale-95"
+          @click="handleCancelDownload"
+        >
+          <svg
+            width="9"
+            height="9"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       <!-- Action Button -->
