@@ -31,11 +31,15 @@ fn configure_for_fullscreen_spaces(window: &WebviewWindow) {
     // NSWindowCollectionBehavior bitmask values from AppKit/NSWindow.h
     const CAN_JOIN_ALL_SPACES: u64 = 1 << 0;
     const STATIONARY: u64 = 1 << 4;
+    const IGNORES_CYCLE: u64 = 1 << 6;
     const FULL_SCREEN_AUXILIARY: u64 = 1 << 8;
 
-    // NSStatusWindowLevel — above NSFloatingWindowLevel(3), stays over the
-    // fullscreen menu-bar reveal.
-    const NS_STATUS_WINDOW_LEVEL: i64 = 25;
+    // NSScreenSaverWindowLevel — sits above the fullscreen app's own window,
+    // not just the menu-bar reveal (level 24). Status level (25) is enough
+    // to beat the menu-bar reveal but loses to the fullscreen content layer,
+    // which is why the pill vanished on fullscreen Spaces. 1000 is what
+    // AppKit's own overlay UIs (screen-saver, AirPlay HUD) use.
+    const NS_SCREEN_SAVER_WINDOW_LEVEL: i64 = 1000;
 
     let ns_window = match window.ns_window() {
         Ok(ptr) if !ptr.is_null() => ptr as *mut objc::runtime::Object,
@@ -45,13 +49,14 @@ fn configure_for_fullscreen_spaces(window: &WebviewWindow) {
         }
     };
 
-    let behavior: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY | STATIONARY;
+    let behavior: u64 =
+        CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY | STATIONARY | IGNORES_CYCLE;
     unsafe {
         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-        let _: () = msg_send![ns_window, setLevel: NS_STATUS_WINDOW_LEVEL];
+        let _: () = msg_send![ns_window, setLevel: NS_SCREEN_SAVER_WINDOW_LEVEL];
     }
     log::debug!(
-        "overlay: applied fullscreen-space configuration (level=25, behavior={:#x})",
+        "overlay: applied fullscreen-space configuration (level=1000, behavior={:#x})",
         behavior
     );
 }
