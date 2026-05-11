@@ -432,6 +432,12 @@ const barHeights = computed(() => {
 .spinner {
   width: 14px;
   height: 14px;
+  transform-origin: 50% 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .spinner-track {
