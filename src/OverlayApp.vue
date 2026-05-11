@@ -427,12 +427,6 @@ const barHeights = computed(() => {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  animation: spinner-pulse 3s ease-in-out infinite;
-}
-
-@keyframes spinner-pulse {
-  0%, 100% { opacity: 0.85; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.1); }
 }
 
 .spinner {
@@ -453,18 +447,10 @@ const barHeights = computed(() => {
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-dasharray: 12 32;
-  animation: arc-morph 1.4s ease-in-out infinite;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-@keyframes arc-morph {
-  0%   { stroke-dasharray: 3 41; }
-  30%  { stroke-dasharray: 22 22; }
-  60%  { stroke-dasharray: 5 39; }
-  100% { stroke-dasharray: 3 41; }
 }
 
 /* ---- Label base ---- */
