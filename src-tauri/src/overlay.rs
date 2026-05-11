@@ -139,30 +139,43 @@ fn configure_for_fullscreen_spaces(window: &WebviewWindow) {
 }
 
 /// Show the overlay window (called when recording starts).
+///
+/// `show_overlay` is invoked from a tokio worker thread (the
+/// `RecordingCommand` consumer in `lib.rs::setup_app`). Tauri's
+/// `WebviewWindow::show()` itself marshals to the main thread internally,
+/// but our raw `msg_send!` calls for `setLevel` / `setCollectionBehavior`
+/// / `orderFrontRegardless` do not — and AppKit's window-server APIs
+/// (`_NSOrderWindow`) trip the `"Must only be used from the main thread"`
+/// SIGTRAP. So we marshal the entire body onto the main thread.
 pub fn show_overlay(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("overlay") {
-        // Re-center in case monitor setup changed
-        center_overlay_horizontally(&window);
-        let _ = window.show();
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(window) = handle.get_webview_window("overlay") {
+            // Re-center in case monitor setup changed
+            center_overlay_horizontally(&window);
+            let _ = window.show();
 
-        // Re-apply collection behavior + level after show(). Tauri's internal
-        // show path re-asserts `alwaysOnTop` (NSFloatingWindowLevel = 3) and
-        // resets collectionBehavior, which would otherwise hide the pill the
-        // moment another app owns a fullscreen Space.
-        #[cfg(target_os = "macos")]
-        {
-            configure_for_fullscreen_spaces(&window);
-            // Force display even though Magpie is not the active app. The
-            // `-orderFront:` selector that Tauri's `show()` ends up calling
-            // is gated on app activation — from another app's fullscreen
-            // Space we are never active, so the panel would otherwise stay
-            // queued and never come forward. `-orderFrontRegardless`
-            // bypasses that gate. Only valid because the window is now an
-            // `NSPanel` with the non-activating style mask (see
-            // `configure_overlay_as_nspanel`).
-            order_overlay_front_regardless(&window);
+            // Re-apply collection behavior + level after show(). Tauri's
+            // internal show path re-asserts `alwaysOnTop`
+            // (NSFloatingWindowLevel = 3) and resets collectionBehavior,
+            // which would otherwise hide the pill the moment another app
+            // owns a fullscreen Space.
+            #[cfg(target_os = "macos")]
+            {
+                configure_for_fullscreen_spaces(&window);
+                // Force display even though Magpie is not the active
+                // app. The `-orderFront:` selector that Tauri's `show()`
+                // ends up calling is gated on app activation — from
+                // another app's fullscreen Space we are never active,
+                // so the panel would otherwise stay queued and never
+                // come forward. `-orderFrontRegardless` bypasses that
+                // gate. Only valid because the window is now an
+                // `NSPanel` with the non-activating style mask (see
+                // `configure_overlay_as_nspanel`).
+                order_overlay_front_regardless(&window);
+            }
         }
-    }
+    });
 }
 
 /// Send `-orderFrontRegardless` to the overlay's NSPanel. Required because
