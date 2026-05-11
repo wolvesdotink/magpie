@@ -1,6 +1,6 @@
 [package]
 name = "magpie"
-version = "0.1.12"
+version = "0.1.13"
 description = "Open source voice-to-text for macOS"
 authors = ["Magpie Contributors"]
 edition = "2021"
