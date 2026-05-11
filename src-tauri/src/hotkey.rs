@@ -220,6 +220,12 @@ pub fn start_fn_key_monitor(
                                     let _ = tx_clone.send(RecordingCommand::Stop);
                                 }
                             }
+                            ActivationMode::TapFn => {
+                                if fn_pressed && !was_pressed {
+                                    log::info!("Fn tap - toggle recording");
+                                    let _ = tx_clone.send(RecordingCommand::Toggle);
+                                }
+                            }
                             ActivationMode::DoubleTapFn => {
                                 if fn_pressed && !was_pressed {
                                     let now = Instant::now();

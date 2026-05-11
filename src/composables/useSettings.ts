@@ -5,6 +5,7 @@ import {
   getAvailableModels,
   getAvailableCorrectionModels,
   restartFnKeyMonitor,
+  updateGlobalShortcut,
   type UserSettings,
   type ModelInfo,
   type CorrectionModelInfo,
@@ -73,12 +74,23 @@ export function useSettings() {
 
   /** Update activation mode */
   async function updateActivationMode(
-    mode: "holdFn" | "doubleTapFn" | "shortcut",
+    mode: "holdFn" | "tapFn" | "doubleTapFn" | "shortcut",
   ) {
     if (!settings.value) return;
     settings.value = { ...settings.value, activationMode: mode };
     await persist();
     await restartFnKeyMonitor();
+  }
+
+  /**
+   * Update the user's custom global shortcut. The backend re-registers the
+   * shortcut and persists the setting; we only mirror it back into the local
+   * ref on success. Errors propagate so the UI can surface them.
+   */
+  async function updateCustomShortcut(shortcut: string | null) {
+    if (!settings.value) return;
+    await updateGlobalShortcut(shortcut);
+    settings.value = { ...settings.value, customShortcut: shortcut };
   }
 
   /** Toggle auto-start */
@@ -155,6 +167,7 @@ export function useSettings() {
     currentModel,
     updateLanguage,
     updateActivationMode,
+    updateCustomShortcut,
     updateAutoStart,
     updateRemoveFillers,
     updateSelfCorrection,

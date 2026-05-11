@@ -51,7 +51,7 @@ export interface PermissionsStatus {
 }
 
 export interface UserSettings {
-  activationMode: "holdFn" | "doubleTapFn" | "shortcut";
+  activationMode: "holdFn" | "tapFn" | "doubleTapFn" | "shortcut";
   language: string | null;
   selectedModel: string | null;
   autoStart: boolean;
@@ -64,6 +64,9 @@ export interface UserSettings {
   /** Whether the streaming-preview worker emits live partial captions while
    *  recording. Default false. */
   streamingPreview: boolean;
+  /** User's custom global shortcut in Tauri format (e.g. "CmdOrCtrl+Shift+R").
+   *  `null` = use the built-in default ("CmdOrCtrl+Shift+Space"). */
+  customShortcut: string | null;
 }
 
 export interface VocabularyEntry {
@@ -126,6 +129,10 @@ export const restartFnKeyMonitor = () =>
 
 export const getFnKeyMonitorStatus = () =>
   invoke<boolean>("get_fn_key_monitor_status");
+
+/** Re-register the global shortcut. Pass `null` to revert to the default. */
+export const updateGlobalShortcut = (shortcut: string | null) =>
+  invoke<void>("update_global_shortcut", { shortcut });
 
 // ── Permissions ────────────────────────────────────────────────────
 

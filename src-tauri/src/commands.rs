@@ -878,6 +878,80 @@ pub fn get_fn_key_monitor_status(state: State<'_, Arc<AppState>>) -> bool {
         .unwrap_or(false)
 }
 
+// ── Global Shortcut ────────────────────────────────────────────────
+
+/// Re-register the global keyboard shortcut. `shortcut = None` reverts to the
+/// built-in default. Returns an error if the new combination fails to parse
+/// or cannot be registered (e.g. already claimed by another app).
+#[tauri::command]
+pub fn update_global_shortcut(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    shortcut: Option<String>,
+) -> Result<(), String> {
+    use crate::recording::RecordingCommand;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+    let new_str = shortcut
+        .clone()
+        .unwrap_or_else(|| crate::DEFAULT_SHORTCUT.to_string());
+    let new_shortcut: Shortcut = new_str
+        .parse()
+        .map_err(|e| format!("Invalid shortcut '{}': {}", new_str, e))?;
+
+    // Best-effort unregister of the previously-registered shortcut so we don't
+    // leak a stale binding when the user switches combinations. Errors are
+    // ignored (it might not be registered, or the binding might be stale).
+    let old_str_opt = state
+        .current_shortcut
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    if let Some(old_str) = old_str_opt {
+        if let Ok(old) = old_str.parse::<Shortcut>() {
+            let _ = app.global_shortcut().unregister(old);
+        }
+    }
+
+    // Clone the recording-command sender so the callback can dispatch toggles.
+    let tx = match state.recording_tx.lock() {
+        Ok(guard) => match guard.as_ref() {
+            Some(tx) => tx.clone(),
+            None => return Err("Recording channel not initialized".into()),
+        },
+        Err(e) => return Err(format!("recording_tx mutex poisoned: {}", e)),
+    };
+
+    app.global_shortcut()
+        .on_shortcut(new_shortcut, move |_app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                if let Err(e) = tx.send(RecordingCommand::Toggle) {
+                    log::error!("Failed to send toggle command: {}", e);
+                }
+            }
+        })
+        .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+
+    // Persist the new value (or `None` for "use default") and update the
+    // tracked string so the next re-register knows what to unregister.
+    {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|e| format!("settings mutex poisoned: {}", e))?;
+        settings.custom_shortcut = shortcut;
+        if let Err(e) = settings.save() {
+            log::error!("Failed to save settings after shortcut change: {}", e);
+        }
+    }
+    if let Ok(mut current) = state.current_shortcut.lock() {
+        *current = Some(new_str.clone());
+    }
+
+    log::info!("Global shortcut updated: {}", new_str);
+    Ok(())
+}
+
 // ── Settings ───────────────────────────────────────────────────────
 
 #[tauri::command]

@@ -14,9 +14,13 @@ fn default_true() -> bool {
 pub enum ActivationMode {
     /// Hold Fn key to record, release to transcribe
     HoldFn,
+    /// Single-tap Fn key to toggle recording (fires on every Fn press,
+    /// including macOS Fn-modifier shortcuts like Fn+F1)
+    TapFn,
     /// Double-tap Fn key to toggle recording
     DoubleTapFn,
-    /// Use a keyboard shortcut (Cmd+Shift+Space)
+    /// Use a global keyboard shortcut (user-configurable; defaults to
+    /// Cmd+Shift+Space)
     Shortcut,
 }
 
@@ -60,6 +64,11 @@ pub struct UserSettings {
     /// users without this field in `settings.json` also default to false.
     #[serde(default)]
     pub streaming_preview: bool,
+    /// User-customizable global shortcut string in Tauri's format
+    /// (e.g. "CmdOrCtrl+Shift+Space"). `None` falls back to the built-in
+    /// default. Existing settings.json files without this field load as None.
+    #[serde(default)]
+    pub custom_shortcut: Option<String>,
 }
 
 impl Default for UserSettings {
@@ -83,6 +92,7 @@ impl Default for UserSettings {
             vocabulary_learning: true,
             setup_complete: false,
             streaming_preview: false,
+            custom_shortcut: None,
         }
     }
 }

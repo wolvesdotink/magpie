@@ -26,6 +26,9 @@ use tokio::sync::mpsc;
 use crate::recording::RecordingCommand;
 use crate::state::AppState;
 
+/// Default global shortcut used when the user has not configured a custom one.
+pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Shift+Space";
+
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
@@ -74,6 +77,7 @@ pub fn run() {
             commands::delete_correction_model_file,
             commands::restart_fn_key_monitor,
             commands::get_fn_key_monitor_status,
+            commands::update_global_shortcut,
             commands::restart_app,
             commands::get_vocabulary,
             commands::add_vocabulary_entry,
@@ -775,14 +779,38 @@ fn try_load_last_correction_model(state: &Arc<AppState>) {
     }
 }
 
-/// Register fallback keyboard shortcut, routing through the serialized command channel
+/// Register the global keyboard shortcut on startup, reading the user's
+/// custom value from settings if present, otherwise using `DEFAULT_SHORTCUT`.
+/// Records the chosen shortcut string in `AppState::current_shortcut` so that
+/// `update_global_shortcut` knows what to unregister before binding a new one.
 fn register_global_shortcut(
     app: &tauri::App,
     tx: mpsc::UnboundedSender<RecordingCommand>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::Manager;
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-    let shortcut: Shortcut = "CmdOrCtrl+Shift+Space".parse()?;
+    let state = app.state::<Arc<AppState>>();
+    let custom = state
+        .settings
+        .lock()
+        .ok()
+        .and_then(|s| s.custom_shortcut.clone());
+    let shortcut_str = custom.unwrap_or_else(|| DEFAULT_SHORTCUT.to_string());
+
+    let shortcut: Shortcut = match shortcut_str.parse() {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!(
+                "Saved custom shortcut '{}' failed to parse ({}); falling back to default",
+                shortcut_str,
+                e
+            );
+            DEFAULT_SHORTCUT.parse()?
+        }
+    };
+
+    log::info!("Registering global shortcut: {}", shortcut_str);
 
     app.global_shortcut()
         .on_shortcut(shortcut, move |_app, _shortcut, event| {
@@ -792,6 +820,10 @@ fn register_global_shortcut(
                 }
             }
         })?;
+
+    if let Ok(mut current) = state.current_shortcut.lock() {
+        *current = Some(shortcut_str);
+    }
 
     Ok(())
 }
