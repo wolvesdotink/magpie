@@ -10,13 +10,13 @@ mod hotkey;
 mod launch_at_login;
 mod models;
 mod output;
+mod overlay;
 mod permissions;
+mod recording;
 mod settings;
 mod state;
 mod transcription;
 mod tray;
-mod overlay;
-mod recording;
 mod vocabulary;
 
 use std::sync::Arc;
@@ -31,7 +31,38 @@ use crate::state::AppState;
 /// Default global shortcut used when the user has not configured a custom one.
 pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Shift+Space";
 
+/// Install a `tracing` subscriber for new structured-logging code. Filter
+/// is taken from `MAGPIE_LOG` if set, else `RUST_LOG`, else `info` for the
+/// app crate and `warn` for everything else.
+///
+/// Notes on coexistence with `log`:
+///   - Existing `log::info!`/`debug!` etc. calls continue to flow through
+///     `tauri-plugin-log` (file + console). They do NOT show up here.
+///   - New code should prefer `tracing::{info,warn,error,instrument}`,
+///     which prints via this subscriber.
+///   - A future change can call `tracing_log::LogTracer::init()` to
+///     forward `log` records into `tracing`, at which point `tauri-plugin-log`
+///     would be dropped or reconfigured. Doing both is fine; doing it now
+///     would silently mute `tauri-plugin-log`.
+fn init_tracing() {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let filter = EnvFilter::try_from_env("MAGPIE_LOG")
+        .or_else(|_| EnvFilter::try_from_default_env())
+        .unwrap_or_else(|_| EnvFilter::new("magpie_lib=info,warn"));
+
+    // try_init so a second `run()` call (e.g. tests, or hot-reload) does not
+    // panic on "global default subscriber already set".
+    let _ = fmt::Subscriber::builder()
+        .with_env_filter(filter)
+        .with_target(true)
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
 pub fn run() {
+    init_tracing();
+
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -106,8 +137,7 @@ pub fn run() {
                             .unwrap_or(false);
 
                         // One-shot suppression (e.g. opening System Preferences)
-                        let suppressed =
-                            state.suppress_hide.swap(false, Ordering::SeqCst);
+                        let suppressed = state.suppress_hide.swap(false, Ordering::SeqCst);
 
                         if !in_setup && !suppressed {
                             let _ = window.hide();
@@ -134,9 +164,7 @@ pub fn run() {
             // would unwind across the C ABI boundary and abort the process
             // with "panic in a function that cannot unwind". We wrap the
             // entire setup body in catch_unwind to convert panics into errors.
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                setup_app(app)
-            }));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| setup_app(app)));
             match result {
                 Ok(inner) => inner,
                 Err(panic_payload) => {
@@ -181,7 +209,6 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(settings_win) = app.get_webview_window("settings") {
         // Tauri API — sets both window and webview background
         let _ = settings_win.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
-
     } else {
         log::warn!("Settings window not found during setup");
     }
@@ -228,14 +255,9 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // surfacing the window is enough — without this, a returning user who
     // revoked a permission would press Fn and get no signal.
     {
-        let has_model = state
-            .backend
-            .lock()
-            .map(|g| g.is_some())
-            .unwrap_or(false);
+        let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
         let perms = commands::check_permissions();
-        let missing_perms =
-            !perms.microphone || !perms.accessibility || !perms.input_monitoring;
+        let missing_perms = !perms.microphone || !perms.accessibility || !perms.input_monitoring;
         if !has_model || missing_perms {
             if !has_model {
                 log::info!("No model loaded — showing setup window");
@@ -274,7 +296,11 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let input_monitoring_granted = permissions::request_input_monitoring_access();
     log::info!(
         "Input Monitoring permission: {}",
-        if input_monitoring_granted { "granted" } else { "NOT granted — user must enable in System Settings" }
+        if input_monitoring_granted {
+            "granted"
+        } else {
+            "NOT granted — user must enable in System Settings"
+        }
     );
 
     // Start Fn key monitor — pass channel sender directly (no Tauri events)
@@ -325,13 +351,8 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or(false);
 
             if needs_restart {
-                log::info!(
-                    "Fn key monitor watchdog: needs_restart flag set — restarting"
-                );
-                match commands::restart_fn_key_monitor_inner(
-                    &watchdog_app,
-                    state.inner(),
-                ) {
+                log::info!("Fn key monitor watchdog: needs_restart flag set — restarting");
+                match commands::restart_fn_key_monitor_inner(&watchdog_app, state.inner()) {
                     Ok(true) => {
                         log::info!("Fn key monitor watchdog: restart succeeded");
                     }
@@ -357,11 +378,8 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             match cmd {
                 RecordingCommand::Start => {
                     if !state.is_recording() && !state.is_processing() {
-                        if let Err(e) = commands::start_recording(
-                            consumer_app.clone(),
-                            state.clone(),
-                        )
-                        .await
+                        if let Err(e) =
+                            commands::start_recording(consumer_app.clone(), state.clone()).await
                         {
                             log::error!("Failed to start recording: {}", e);
                         }
@@ -375,11 +393,8 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 RecordingCommand::Stop => {
                     if state.is_recording() {
-                        if let Err(e) = commands::stop_recording(
-                            consumer_app.clone(),
-                            state.clone(),
-                        )
-                        .await
+                        if let Err(e) =
+                            commands::stop_recording(consumer_app.clone(), state.clone()).await
                         {
                             log::error!("Failed to stop recording: {}", e);
                         }
@@ -389,20 +404,14 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 RecordingCommand::Toggle => {
                     if state.is_recording() {
-                        if let Err(e) = commands::stop_recording(
-                            consumer_app.clone(),
-                            state.clone(),
-                        )
-                        .await
+                        if let Err(e) =
+                            commands::stop_recording(consumer_app.clone(), state.clone()).await
                         {
                             log::error!("Failed to stop recording: {}", e);
                         }
                     } else if !state.is_processing() {
-                        if let Err(e) = commands::start_recording(
-                            consumer_app.clone(),
-                            state.clone(),
-                        )
-                        .await
+                        if let Err(e) =
+                            commands::start_recording(consumer_app.clone(), state.clone()).await
                         {
                             log::error!("Failed to start recording: {}", e);
                         }
@@ -559,9 +568,9 @@ fn maybe_backfill_coreml_encoder(
             return;
         }
     };
-    let encoder_dir = models_dir.join(
-        models::downloader::encoder_dir_name_from_filename(&info.filename),
-    );
+    let encoder_dir = models_dir.join(models::downloader::encoder_dir_name_from_filename(
+        &info.filename,
+    ));
     if encoder_dir.exists() {
         return;
     }
@@ -642,11 +651,7 @@ async fn reload_backend_after_backfill(
     };
 
     if let Err(e) = self_test {
-        log::warn!(
-            "Self-test for {} after backfill returned: {}",
-            model_id,
-            e
-        );
+        log::warn!("Self-test for {} after backfill returned: {}", model_id, e);
     }
 
     if let Ok(mut slot) = state.backend.lock() {
@@ -730,7 +735,10 @@ fn try_load_last_correction_model(state: &Arc<AppState>) {
     let selected = match state.settings.lock() {
         Ok(settings) => settings.selected_correction_model.clone(),
         Err(e) => {
-            log::error!("Settings mutex poisoned in try_load_last_correction_model: {}", e);
+            log::error!(
+                "Settings mutex poisoned in try_load_last_correction_model: {}",
+                e
+            );
             return;
         }
     };

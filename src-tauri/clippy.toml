@@ -1,0 +1,9 @@
+# Clippy knobs. Lint allow/deny lives at the crate root (lib.rs) so it
+# travels with the source, not the config.
+
+# Cap MSRV-aware lints to the toolchain pinned in rust-toolchain.toml.
+msrv = "1.91"
+
+# Project conventions:
+# - The `Magpie` brand name is intentional; don't suggest splitting it.
+doc-valid-idents = ["Magpie", "macOS", "iOS", "CoreML", "ANE", "GGML", "ONNX"]

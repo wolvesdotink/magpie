@@ -1,0 +1,84 @@
+# =============================================================================
+# ci.yml — fast checks on every PR and push to main.
+# =============================================================================
+#
+# This pipeline gates merges. It is intentionally split from release.yml so
+# every PR runs the cheap, fast checks without dragging in the
+# code-signing / notarization machinery (which is slow, secret-gated, and
+# arm64-only).
+#
+# WHAT IT CHECKS
+#   - cargo fmt --check          formatting drift in Rust code
+#   - cargo clippy -D warnings   new lint warnings fail the build
+#   - cargo test                 unit + integration tests for src-tauri
+#   - bun run typecheck          vue-tsc --noEmit (strict)
+#   - bun run lint               eslint flat-config (Vue 3 + TS)
+#   - bun run format:check       prettier --check
+#
+# RUNNER CHOICE
+#   We use macos-latest because src-tauri pulls in Apple-specific dependencies
+#   (whisper-rs/metal, smappservice-rs, cocoa, etc.). Building on Linux would
+#   require cfg-gating everything; not worth it until we actually target Linux
+#   (Phase 4 work).
+# =============================================================================
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend checks
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+      - name: Typecheck (vue-tsc)
+        run: bun run typecheck
+      - name: ESLint
+        run: bun run lint
+      - name: Prettier check
+        run: bun run format:check
+
+  rust:
+    name: Rust checks
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      # rust-toolchain.toml pins the channel + components; no need to install.
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-ci-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-ci-
+      - name: Format check
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Clippy
+        # NOTE: not yet `-D warnings`. We're enabling clippy in CI but treating
+        # the existing 11k LOC as "background debt" rather than blocking PRs
+        # on it. Per-module `#![deny(clippy::all)]` opt-in is added as files
+        # are touched (Phase 1). Promote this to `-D warnings` once the
+        # backlog is paid down.
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+      - name: Test
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-features

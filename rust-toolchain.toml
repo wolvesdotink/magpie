@@ -1,0 +1,7 @@
+# Pinned so CI, local dev, and contributors all build with the same compiler.
+# Bump deliberately, never drift.
+[toolchain]
+channel = "1.91.1"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+profile = "minimal"
