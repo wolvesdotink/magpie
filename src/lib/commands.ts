@@ -166,6 +166,20 @@ export const getSettings = () => invoke<UserSettings>("get_settings");
 export const updateSettings = (settings: UserSettings) =>
   invoke("update_settings", { settings });
 
+// ── Launch at login ────────────────────────────────────────────────
+
+export type LaunchAtLoginStatus =
+  | "enabled"
+  | "notRegistered"
+  | "requiresApproval"
+  | "notFound";
+
+export const getLaunchAtLoginStatus = () =>
+  invoke<LaunchAtLoginStatus>("get_launch_at_login_status");
+
+export const openLoginItemsSettings = () =>
+  invoke<void>("open_login_items_settings");
+
 // ── Vocabulary ────────────────────────────────────────────────────
 
 export const getVocabulary = () =>

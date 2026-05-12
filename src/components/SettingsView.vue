@@ -47,6 +47,8 @@ const {
   currentLanguageCode,
   isEnglishOnlyModel,
   currentModel,
+  launchAtLoginStatus,
+  openLoginItemsSettings,
   updateLanguage,
   updateActivationMode,
   updateCustomShortcut,
@@ -1746,6 +1748,15 @@ const currentLanguageLabel = computed(() => {
               <div class="toggle-thumb" />
             </button>
           </div>
+          <button
+            v-if="launchAtLoginStatus === 'requiresApproval'"
+            class="text-[10px] text-amber-400 mt-1.5 px-1 text-left
+                   hover:underline cursor-pointer"
+            @click="openLoginItemsSettings()"
+          >
+            Magpie needs approval in System Settings → Login Items.
+            Click to open.
+          </button>
         </section>
 
         <!-- ═══════════════ UPDATES SECTION ═══════════════ -->

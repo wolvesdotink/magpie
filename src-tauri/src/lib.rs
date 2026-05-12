@@ -6,6 +6,8 @@ mod correction;
 mod correction_detector;
 mod events;
 mod hotkey;
+#[cfg(target_os = "macos")]
+mod launch_at_login;
 mod models;
 mod output;
 mod permissions;
@@ -85,6 +87,8 @@ pub fn run() {
             commands::remove_vocabulary_entry,
             commands::clear_vocabulary,
             commands::repair_active_model,
+            commands::get_launch_at_login_status,
+            commands::open_login_items_settings,
         ])
         .on_window_event(|window, event| {
             match window.label() {
@@ -190,6 +194,32 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // Try to load previously selected correction model
     try_load_last_correction_model(&state);
+
+    // Reconcile launch-at-login: settings.json is authoritative for intent,
+    // but System Settings → Login Items is authoritative for OS state. If
+    // the user toggled it off via System Settings while the app was closed,
+    // sync that back so the UI reflects reality.
+    #[cfg(target_os = "macos")]
+    {
+        let stored = state.settings.lock().map(|s| s.auto_start).unwrap_or(false);
+        let actual = launch_at_login::status();
+        let actual_enabled = matches!(
+            actual,
+            launch_at_login::LaunchAtLoginStatus::Enabled
+                | launch_at_login::LaunchAtLoginStatus::RequiresApproval
+        );
+        if stored != actual_enabled {
+            log::info!(
+                "launch-at-login drift: settings={}, actual={:?} — syncing setting to OS state",
+                stored,
+                actual
+            );
+            if let Ok(mut s) = state.settings.lock() {
+                s.auto_start = actual_enabled;
+                let _ = s.save();
+            }
+        }
+    }
 
     // Show the main window on startup if anything blocks normal operation:
     // no model loaded, or any of the three required permissions revoked.

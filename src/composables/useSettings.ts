@@ -6,9 +6,12 @@ import {
   getAvailableCorrectionModels,
   restartFnKeyMonitor,
   updateGlobalShortcut,
+  getLaunchAtLoginStatus,
+  openLoginItemsSettings,
   type UserSettings,
   type ModelInfo,
   type CorrectionModelInfo,
+  type LaunchAtLoginStatus,
 } from "@/lib/commands";
 import { settingToCode, codeToSetting } from "@/lib/languages";
 
@@ -17,6 +20,7 @@ export function useSettings() {
   const models = ref<ModelInfo[]>([]);
   const correctionModels = ref<CorrectionModelInfo[]>([]);
   const loading = ref(true);
+  const launchAtLoginStatus = ref<LaunchAtLoginStatus>("notRegistered");
 
   /** Current language as a UI code ("auto", "en", "de", …) */
   const currentLanguageCode = computed(() =>
@@ -40,14 +44,16 @@ export function useSettings() {
 
   async function load() {
     try {
-      const [s, m, cm] = await Promise.all([
+      const [s, m, cm, las] = await Promise.all([
         getSettings(),
         getAvailableModels(),
         getAvailableCorrectionModels(),
+        getLaunchAtLoginStatus().catch(() => "notRegistered" as const),
       ]);
       settings.value = s;
       models.value = m;
       correctionModels.value = cm;
+      launchAtLoginStatus.value = las;
     } catch (e) {
       console.error("Failed to load settings:", e);
     } finally {
@@ -93,11 +99,30 @@ export function useSettings() {
     settings.value = { ...settings.value, customShortcut: shortcut };
   }
 
-  /** Toggle auto-start */
+  /**
+   * Toggle launch-at-login. Persisting the setting also triggers the
+   * backend register/unregister via SMAppService, then we re-read the
+   * actual OS state — registration can resolve to `requiresApproval` or
+   * fail silently in dev (unstable code signing). If the OS state doesn't
+   * match the requested state, snap the toggle to reality so the UI
+   * doesn't lie to the user.
+   */
   async function updateAutoStart(enabled: boolean) {
     if (!settings.value) return;
     settings.value = { ...settings.value, autoStart: enabled };
     await persist();
+    try {
+      launchAtLoginStatus.value = await getLaunchAtLoginStatus();
+    } catch (e) {
+      console.error("Failed to read launch-at-login status:", e);
+      return;
+    }
+    const actuallyOn =
+      launchAtLoginStatus.value === "enabled" ||
+      launchAtLoginStatus.value === "requiresApproval";
+    if (settings.value && settings.value.autoStart !== actuallyOn) {
+      settings.value = { ...settings.value, autoStart: actuallyOn };
+    }
   }
 
   /** Toggle filler word removal */
@@ -165,6 +190,8 @@ export function useSettings() {
     currentLanguageCode,
     isEnglishOnlyModel,
     currentModel,
+    launchAtLoginStatus,
+    openLoginItemsSettings,
     updateLanguage,
     updateActivationMode,
     updateCustomShortcut,

@@ -1022,6 +1022,8 @@ pub fn update_settings(
     if settings.selected_correction_model.is_none() {
         settings.selected_correction_model = current.selected_correction_model.clone();
     }
+    let auto_start_changed = current.auto_start != settings.auto_start;
+    let new_auto_start = settings.auto_start;
     *current = settings;
     if let Err(e) = current.save() {
         log::error!("Failed to save settings: {}", e);
@@ -1031,7 +1033,51 @@ pub fn update_settings(
         current.selected_model,
         current.selected_correction_model
     );
+    // Drop the settings lock before calling into SMAppService — the
+    // register/unregister call can take a noticeable moment and may
+    // surface a system notification on the main thread.
+    drop(current);
+
+    #[cfg(target_os = "macos")]
+    if auto_start_changed {
+        match crate::launch_at_login::set_enabled(new_auto_start) {
+            Ok(status) => log::info!(
+                "launch-at-login set to {}: status={:?}",
+                new_auto_start,
+                status
+            ),
+            Err(e) => log::error!(
+                "launch-at-login set_enabled({}) failed: {}",
+                new_auto_start,
+                e
+            ),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (auto_start_changed, new_auto_start);
 }
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn get_launch_at_login_status() -> crate::launch_at_login::LaunchAtLoginStatus {
+    crate::launch_at_login::status()
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn get_launch_at_login_status() -> &'static str {
+    "notRegistered"
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn open_login_items_settings() {
+    crate::launch_at_login::open_login_items_settings();
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn open_login_items_settings() {}
 
 // ── Correction Model Management ───────────────────────────────────
 
