@@ -21,6 +21,11 @@ use thiserror::Error;
 /// `details` is reserved for optional structured context. Today every variant
 /// produces a string `message`; future variants can add typed details fields
 /// when callers want richer UI affordances (e.g. retry buttons).
+///
+/// Currently unused in production paths — commands still return
+/// `Result<T, String>`. Phase 1 scaffolding so the wire shape stabilizes
+/// before per-command migration. See ADR-0002.
+#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 #[derive(Debug, Error, Serialize)]
 #[serde(
     tag = "kind",
@@ -89,6 +94,7 @@ pub enum CommandError {
     InvalidArgument { message: String },
 }
 
+#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 impl CommandError {
     /// Shorthand for the catch-all `Other` variant.
     pub fn other(msg: impl Into<String>) -> Self {
@@ -192,6 +198,7 @@ impl From<crate::transcription::backend::TranscribeError> for CommandError {
     }
 }
 
+#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 pub type Result<T> = std::result::Result<T, CommandError>;
 
 #[cfg(test)]

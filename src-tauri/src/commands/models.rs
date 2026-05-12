@@ -236,6 +236,9 @@ fn load_model_internal(
         );
     }
 
+    // backend(#2) and current_model_path(#2) share rank 2 — sequential
+    // single-statement acquires drop the first guard at the `;` before
+    // the second runs, so this never co-holds and is protocol-safe.
     *lock_or_recover(&state.backend) = Some(backend);
     *lock_or_recover(&state.current_model_path) = Some(path.to_path_buf());
 

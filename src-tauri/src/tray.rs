@@ -196,6 +196,13 @@ fn handle_model_selection(app: &AppHandle, model_id: &str) {
 
     match WhisperBackend::load(&path) {
         Ok(backend) => {
+            // Each lock scope drops its guard before the next acquires —
+            // settings(#1), backend/current_model_path(#2) are touched in
+            // *reverse* protocol order here, which is safe ONLY because
+            // the guards never co-exist. If a future refactor merges any
+            // two of these scopes into one, the merged scope MUST acquire
+            // settings (rank 1) first to stay protocol-compliant. See
+            // `state::AppState` lock-ordering doc.
             {
                 let mut slot = lock_or_recover(&state.backend);
                 *slot = Some(Arc::new(backend) as Arc<dyn TranscriptionBackend>);

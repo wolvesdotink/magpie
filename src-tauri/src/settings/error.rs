@@ -6,11 +6,16 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum SettingsError {
+    // NoDataDir / Io are not yet constructed by callers — Phase 1
+    // scaffolding for when settings I/O migrates off `anyhow::Result` to
+    // typed errors. See ADR-0002 / Phase 1 plan.
     /// `directories::ProjectDirs` could not resolve a writable app-data dir.
+    #[allow(dead_code)]
     #[error("could not determine app data directory for settings")]
     NoDataDir,
 
     /// I/O error reading or writing the settings JSON file.
+    #[allow(dead_code)]
     #[error("settings file io error at {path}: {source}")]
     Io {
         path: PathBuf,

@@ -188,6 +188,16 @@ pub fn delete_correction_model_file(
 /// path. Used by both `download_correction_model` (post-fetch) and
 /// `select_correction_model` (when the user switches to an already-
 /// downloaded model). Initializes `llama_backend` on first call.
+///
+/// # Locking
+///
+/// We hold `llama_backend` (rank 9) across the FFI `load_correction_model`
+/// call. This intentionally serializes concurrent correction-model loads
+/// — two parallel `select_correction_model` invocations would race the
+/// `correction_model` slot anyway, and llama.cpp's model loader is not
+/// safe to enter twice in parallel from the same backend handle. The
+/// trade-off is that other commands that touch `llama_backend` will
+/// queue while a load is in flight; nothing else does today.
 fn load_correction_model_internal(
     app: &AppHandle,
     state: &State<'_, Arc<AppState>>,

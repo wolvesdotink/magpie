@@ -53,7 +53,7 @@ pub(crate) fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::
     tray::setup_tray(app)?;
 
     // Configure overlay window (click-through, centering)
-    overlay::setup_overlay(&app.handle());
+    overlay::setup_overlay(app.handle());
 
     // Force settings window to be fully transparent so the
     // CSS outer padding shows through as empty space.

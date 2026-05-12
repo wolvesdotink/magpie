@@ -259,7 +259,7 @@ pub fn start_fn_key_monitor(
                         fn_was_pressed_clone.store(fn_pressed, Ordering::SeqCst);
                     }));
 
-                    if let Err(_) = result {
+                    if result.is_err() {
                         log::error!("Panic caught in CGEventTap callback — ignoring event");
                     }
 

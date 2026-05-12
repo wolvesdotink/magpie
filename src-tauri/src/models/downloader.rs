@@ -86,7 +86,7 @@ pub async fn download_model(
         let mut last_progress_pct: f64 = -1.0;
 
         while let Some(chunk) = stream.next().await {
-            if cancel.map_or(false, |c| c.is_cancelled()) {
+            if cancel.is_some_and(|c| c.is_cancelled()) {
                 return Err(DownloadError::Cancelled);
             }
             let chunk = chunk.context("Download stream error")?;
@@ -276,6 +276,10 @@ pub fn encoder_dir_name_from_filename(ggml_filename: &str) -> String {
     format!("{}-encoder.mlmodelc", stem)
 }
 
+// 8 args is one over the clippy default; refactoring into a struct here
+// would just shuffle fields around — every parameter is independently
+// supplied at the single call site and there's no natural grouping.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_and_unpack_encoder(
     app: &AppHandle,
     model_id: &str,
@@ -303,7 +307,7 @@ async fn fetch_and_unpack_encoder(
     let mut last_progress_pct: f64 = -1.0;
 
     while let Some(chunk) = stream.next().await {
-        if cancel.map_or(false, |c| c.is_cancelled()) {
+        if cancel.is_some_and(|c| c.is_cancelled()) {
             return Err(DownloadError::Cancelled);
         }
         let chunk = chunk.context("Encoder download stream error")?;

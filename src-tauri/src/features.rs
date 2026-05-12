@@ -73,9 +73,10 @@ impl FeatureFlags {
     /// overrides. Pure function; the only impure inputs are env reads
     /// pulled in once at the start.
     pub fn resolve(settings: &UserSettings) -> Self {
-        let mut flags = Self::default();
-        flags.streaming_preview = settings.streaming_preview;
-
+        let mut flags = Self {
+            streaming_preview: settings.streaming_preview,
+            ..Self::default()
+        };
         flags.apply_env_overrides();
         flags
     }
@@ -97,16 +98,16 @@ impl FeatureFlags {
 /// and-ignore (the existing flag value sticks). Empty string is also ignored.
 fn env_override(name: &str, target: &mut bool) {
     let var_name = format!("MAGPIE_FEATURE_{name}");
-    match std::env::var(&var_name) {
-        Ok(v) => match v.to_ascii_lowercase().as_str() {
+    // Err(_) means the var is not set; keep current value.
+    if let Ok(v) = std::env::var(&var_name) {
+        match v.to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => *target = true,
             "0" | "false" | "no" | "off" => *target = false,
             "" => {}
             other => {
                 log::warn!("{var_name}={other:?} is not a recognized boolean — ignoring",);
             }
-        },
-        Err(_) => {} // var not set; keep current value
+        }
     }
 }
 

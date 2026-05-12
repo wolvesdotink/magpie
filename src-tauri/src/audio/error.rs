@@ -3,9 +3,14 @@
 //! Categorical (not stringly-typed) so the orchestration layer can react
 //! distinctly to "no device" vs. "permission denied" vs. "unsupported
 //! sample format" without parsing strings.
+//!
+//! Currently unused in production paths — kept as Phase 1 scaffolding so
+//! the error surface stabilizes before module callers migrate off
+//! `anyhow::Error` strings. See ADR-0002 / Phase 1 plan.
 
 use thiserror::Error;
 
+#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 #[derive(Debug, Error)]
 pub enum AudioError {
     /// `cpal::default_host().default_input_device()` returned `None`. Either
@@ -34,4 +39,5 @@ pub enum AudioError {
     UnsupportedSampleFormat(cpal::SampleFormat),
 }
 
+#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 pub type Result<T> = std::result::Result<T, AudioError>;
