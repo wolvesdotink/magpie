@@ -3,14 +3,22 @@
 // `pub use` re-exports them so `commands::name` keeps working from
 // lib.rs's `invoke_handler!` macro and from cross-module callers like
 // tray.rs's `commands::run_repair_active_model`.
+pub mod app;
 pub mod features;
 pub mod hotkey;
 pub mod permissions;
+pub mod settings;
 pub mod vocabulary;
+pub use app::*;
 pub use features::*;
 pub use hotkey::*;
 pub use permissions::*;
+pub use settings::*;
 pub use vocabulary::*;
+
+// Re-exported under the old (unscoped) path so existing `get_app_state_payload`
+// callers inside mod.rs continue to work without changes.
+use app::get_app_state_payload;
 
 use std::sync::Arc;
 
@@ -521,20 +529,7 @@ fn unregister_escape_shortcut(app: &AppHandle) {
     }
 }
 
-// ── App State ──────────────────────────────────────────────────────
-
-#[tauri::command]
-pub fn get_app_state(state: State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = lock_or_recover(&state.backend).is_some();
-    let last_transcription = lock_or_recover(&state.last_transcription).clone();
-
-    AppStatePayload {
-        recording: state.is_recording(),
-        processing: state.is_processing(),
-        has_model,
-        last_transcription,
-    }
-}
+// App-state + restart commands extracted to commands/app.rs.
 
 // ── Model Management ───────────────────────────────────────────────
 
@@ -761,17 +756,7 @@ fn load_model_internal(
     Ok(())
 }
 
-fn get_app_state_payload(state: &State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = lock_or_recover(&state.backend).is_some();
-    let last_transcription = lock_or_recover(&state.last_transcription).clone();
-
-    AppStatePayload {
-        recording: state.is_recording(),
-        processing: state.is_processing(),
-        has_model,
-        last_transcription,
-    }
-}
+// get_app_state_payload moved to commands/app.rs.
 
 // ── Repair Active Model ────────────────────────────────────────────
 
@@ -929,155 +914,10 @@ pub async fn run_repair_active_model(app: &AppHandle) {
     }
 }
 
-/// Restart the app. Re-execs the current binary; on macOS this lets a freshly
-/// granted Accessibility permission take effect when AX trust was cached as
-/// `false` for the previous process lifetime.
-#[tauri::command]
-pub fn restart_app(app: tauri::AppHandle) {
-    app.restart();
-}
+// restart_app moved to commands/app.rs.
 
-// ── Global Shortcut ────────────────────────────────────────────────
-
-/// Re-register the global keyboard shortcut. `shortcut = None` reverts to the
-/// built-in default. Returns an error if the new combination fails to parse
-/// or cannot be registered (e.g. already claimed by another app).
-#[tauri::command]
-pub fn update_global_shortcut(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-    shortcut: Option<String>,
-) -> Result<(), String> {
-    use crate::recording::RecordingCommand;
-    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-
-    let new_str = shortcut
-        .clone()
-        .unwrap_or_else(|| crate::DEFAULT_SHORTCUT.to_string());
-    let new_shortcut: Shortcut = new_str
-        .parse()
-        .map_err(|e| format!("Invalid shortcut '{}': {}", new_str, e))?;
-
-    // Best-effort unregister of the previously-registered shortcut so we don't
-    // leak a stale binding when the user switches combinations. Errors are
-    // ignored (it might not be registered, or the binding might be stale).
-    let old_str_opt = lock_or_recover(&state.current_shortcut).clone();
-    if let Some(old_str) = old_str_opt {
-        if let Ok(old) = old_str.parse::<Shortcut>() {
-            let _ = app.global_shortcut().unregister(old);
-        }
-    }
-
-    // Clone the recording-command sender so the callback can dispatch toggles.
-    let tx = match lock_or_recover(&state.recording_tx).as_ref() {
-        Some(tx) => tx.clone(),
-        None => return Err("Recording channel not initialized".into()),
-    };
-
-    app.global_shortcut()
-        .on_shortcut(new_shortcut, move |_app, _shortcut, event| {
-            if event.state == ShortcutState::Pressed {
-                if let Err(e) = tx.send(RecordingCommand::Toggle) {
-                    log::error!("Failed to send toggle command: {}", e);
-                }
-            }
-        })
-        .map_err(|e| format!("Failed to register shortcut: {}", e))?;
-
-    // Persist the new value (or `None` for "use default") and update the
-    // tracked string so the next re-register knows what to unregister.
-    {
-        let mut settings = lock_or_recover(&state.settings);
-        settings.custom_shortcut = shortcut;
-        if let Err(e) = settings.save() {
-            log::error!("Failed to save settings after shortcut change: {}", e);
-        }
-    }
-    *lock_or_recover(&state.current_shortcut) = Some(new_str.clone());
-
-    log::info!("Global shortcut updated: {}", new_str);
-    Ok(())
-}
-
-// ── Settings ───────────────────────────────────────────────────────
-
-#[tauri::command]
-pub fn get_settings(state: State<'_, Arc<AppState>>) -> crate::settings::UserSettings {
-    lock_or_recover(&state.settings).clone()
-}
-
-#[tauri::command]
-pub fn update_settings(
-    state: State<'_, Arc<AppState>>,
-    mut settings: crate::settings::UserSettings,
-) {
-    let mut current = lock_or_recover(&state.settings);
-    // Model selections are owned by download_model / select_model, not by
-    // generic preference saves. A null in the incoming payload means "I
-    // don't know / I didn't touch this", not "clear the selection" — so
-    // preserve whatever the backend last set.
-    if settings.selected_model.is_none() {
-        settings.selected_model = current.selected_model.clone();
-    }
-    if settings.selected_correction_model.is_none() {
-        settings.selected_correction_model = current.selected_correction_model.clone();
-    }
-    let auto_start_changed = current.auto_start != settings.auto_start;
-    let new_auto_start = settings.auto_start;
-    *current = settings;
-    if let Err(e) = current.save() {
-        log::error!("Failed to save settings: {}", e);
-    }
-    log::info!(
-        "Settings updated; selected_model={:?}, selected_correction_model={:?}",
-        current.selected_model,
-        current.selected_correction_model
-    );
-    // Drop the settings lock before calling into SMAppService — the
-    // register/unregister call can take a noticeable moment and may
-    // surface a system notification on the main thread.
-    drop(current);
-
-    #[cfg(target_os = "macos")]
-    if auto_start_changed {
-        match crate::launch_at_login::set_enabled(new_auto_start) {
-            Ok(status) => log::info!(
-                "launch-at-login set to {}: status={:?}",
-                new_auto_start,
-                status
-            ),
-            Err(e) => log::error!(
-                "launch-at-login set_enabled({}) failed: {}",
-                new_auto_start,
-                e
-            ),
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = (auto_start_changed, new_auto_start);
-}
-
-#[cfg(target_os = "macos")]
-#[tauri::command]
-pub fn get_launch_at_login_status() -> crate::launch_at_login::LaunchAtLoginStatus {
-    crate::launch_at_login::status()
-}
-
-#[cfg(not(target_os = "macos"))]
-#[tauri::command]
-pub fn get_launch_at_login_status() -> &'static str {
-    "notRegistered"
-}
-
-#[cfg(target_os = "macos")]
-#[tauri::command]
-pub fn open_login_items_settings() {
-    crate::launch_at_login::open_login_items_settings();
-}
-
-#[cfg(not(target_os = "macos"))]
-#[tauri::command]
-pub fn open_login_items_settings() {}
+// Settings + global-shortcut + launch-at-login commands extracted to
+// commands/settings.rs.
 
 // ── Correction Model Management ───────────────────────────────────
 
