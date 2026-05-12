@@ -42,6 +42,14 @@ function nextStep() {
   if (idx < visibleSteps.value.length - 1) {
     currentStep.value = visibleSteps.value[idx + 1];
   }
+  // Once the user clears the permissions step (PermissionsStep auto-emits
+  // `next` when both are granted), drop the dot from the progress strip
+  // so the indicator collapses from 4 dots to 3. visibleSteps recomputes
+  // synchronously and currentStepIndex stays correct because the new step
+  // we just navigated to keeps its position.
+  if (currentStep.value !== 'permissions' && needsPermissions.value) {
+    needsPermissions.value = false;
+  }
 }
 
 onMounted(async () => {
