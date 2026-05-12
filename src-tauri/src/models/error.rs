@@ -1,13 +1,9 @@
 //! Errors produced by the model registry, downloader, and on-disk storage.
-//!
-//! Currently unused in production paths — Phase 1 scaffolding. See
-//! `audio/error.rs` for the migration rationale.
 
 use std::path::PathBuf;
 
 use thiserror::Error;
 
-#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 #[derive(Debug, Error)]
 pub enum ModelError {
     /// The requested model ID is not in the registry. Either a stale settings
@@ -49,7 +45,13 @@ pub enum ModelError {
     /// can't masquerade as a valid model.
     #[error("download size mismatch: expected {expected} bytes, got {actual}")]
     SizeMismatch { expected: u64, actual: u64 },
+
+    /// CoreML encoder package didn't pass post-unpack validation
+    /// (missing markers, no `.mlmodelc` directory, malformed path, etc.).
+    /// Distinct from `UnzipError` because the unzip succeeded — what came
+    /// out the other side was unusable.
+    #[error("CoreML encoder validation failed: {0}")]
+    EncoderInvalid(String),
 }
 
-#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 pub type Result<T> = std::result::Result<T, ModelError>;

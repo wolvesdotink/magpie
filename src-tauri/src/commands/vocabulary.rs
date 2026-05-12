@@ -8,8 +8,17 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use crate::command_error::CommandError;
 use crate::state::{lock_or_recover, AppState};
 use crate::vocabulary::{VocabularyEntry, VocabularySource};
+
+/// Vocabulary save is `anyhow::Result`, so wrap into `CommandError::Settings`
+/// (vocabulary is part of the user's personalization surface).
+fn save_err(e: anyhow::Error) -> CommandError {
+    CommandError::Settings {
+        message: e.to_string(),
+    }
+}
 
 #[tauri::command]
 pub fn get_vocabulary(state: State<'_, Arc<AppState>>) -> Vec<VocabularyEntry> {
@@ -21,25 +30,25 @@ pub fn add_vocabulary_entry(
     state: State<'_, Arc<AppState>>,
     wrong: String,
     correct: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let mut vocab = lock_or_recover(&state.vocabulary);
     vocab.add_or_update(&wrong, &correct, VocabularySource::Manual);
-    vocab.save().map_err(|e| e.to_string())
+    vocab.save().map_err(save_err)
 }
 
 #[tauri::command]
 pub fn remove_vocabulary_entry(
     state: State<'_, Arc<AppState>>,
     wrong: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let mut vocab = lock_or_recover(&state.vocabulary);
     vocab.remove(&wrong);
-    vocab.save().map_err(|e| e.to_string())
+    vocab.save().map_err(save_err)
 }
 
 #[tauri::command]
-pub fn clear_vocabulary(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn clear_vocabulary(state: State<'_, Arc<AppState>>) -> Result<(), CommandError> {
     let mut vocab = lock_or_recover(&state.vocabulary);
     vocab.entries.clear();
-    vocab.save().map_err(|e| e.to_string())
+    vocab.save().map_err(save_err)
 }

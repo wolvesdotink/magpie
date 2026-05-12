@@ -21,8 +21,9 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
 
+use crate::command_error::CommandError;
 use crate::events::{self, event_names, TranscriptionError};
-use crate::models::{downloader, registry, storage};
+use crate::models::{downloader, registry, storage, ModelError};
 use crate::state::{lock_or_recover, AppState};
 use crate::transcription::backend::CancellationToken;
 use crate::tray;
@@ -35,8 +36,8 @@ pub fn get_available_models() -> Vec<registry::ModelInfo> {
 }
 
 #[tauri::command]
-pub fn get_downloaded_models() -> Result<Vec<String>, String> {
-    storage::list_downloaded_models().map_err(|e| e.to_string())
+pub fn get_downloaded_models() -> Result<Vec<String>, CommandError> {
+    Ok(storage::list_downloaded_models()?)
 }
 
 #[tauri::command]
@@ -44,9 +45,9 @@ pub async fn download_model(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     model_id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let model_info =
-        registry::find_model(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
+        registry::find_model(&model_id).ok_or(ModelError::UnknownId(model_id.clone()))?;
 
     let encoder = model_info
         .encoder_url
@@ -82,17 +83,17 @@ pub async fn download_model(
 
     let path = match result {
         Ok(p) => p,
-        Err(downloader::DownloadError::Cancelled) => {
+        Err(ModelError::Cancelled) => {
             log::info!("Download of {} cancelled by user", model_id);
             events::emit_event(
                 &app,
                 event_names::MODEL_DOWNLOAD_CANCELLED,
                 serde_json::json!({ "modelId": model_id }),
             );
-            return Err("Download cancelled".to_string());
+            return Err(CommandError::Cancelled);
         }
-        Err(downloader::DownloadError::Other(e)) => {
-            return Err(format!("Download failed: {}", e));
+        Err(e) => {
+            return Err(e.into());
         }
     };
 
@@ -106,7 +107,7 @@ pub async fn download_model(
     if let Err(e) = load_model_internal(&app, &state, &path, &model_id) {
         log::error!("Removing corrupted model after failed load: {}", e);
         let _ = std::fs::remove_file(&path);
-        return Err(format!("Model downloaded but failed to load: {}", e));
+        return Err(e);
     }
 
     // Persist the selection so the model auto-loads on next launch
@@ -128,7 +129,10 @@ pub async fn download_model(
 /// returns Ok even if no download is currently registered (covers the race
 /// between cancel and completion).
 #[tauri::command]
-pub fn cancel_download(state: State<'_, Arc<AppState>>, model_id: String) -> Result<(), String> {
+pub fn cancel_download(
+    state: State<'_, Arc<AppState>>,
+    model_id: String,
+) -> Result<(), CommandError> {
     let active = lock_or_recover(&state.active_downloads);
     if let Some(token) = active.get(&model_id) {
         token.cancel();
@@ -144,14 +148,14 @@ pub fn select_model(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     model_id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let model_info =
-        registry::find_model(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
+        registry::find_model(&model_id).ok_or(ModelError::UnknownId(model_id.clone()))?;
 
-    let path = storage::model_path(&model_info.filename).map_err(|e| e.to_string())?;
+    let path = storage::model_path(&model_info.filename)?;
 
     if !path.exists() {
-        return Err(format!("Model {} is not downloaded", model_id));
+        return Err(ModelError::UnknownId(format!("{model_id} (file missing on disk)")).into());
     }
 
     load_model_internal(&app, &state, &path, &model_id)?;
@@ -176,11 +180,11 @@ pub fn delete_model_file(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     model_id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let model_info =
-        registry::find_model(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
+        registry::find_model(&model_id).ok_or(ModelError::UnknownId(model_id.clone()))?;
 
-    storage::delete_model(&model_info.filename).map_err(|e| e.to_string())?;
+    storage::delete_model(&model_info.filename)?;
 
     // Best-effort cleanup of the sibling CoreML encoder directory if one
     // was downloaded with this model.
@@ -223,9 +227,11 @@ fn load_model_internal(
     state: &State<'_, Arc<AppState>>,
     path: &std::path::Path,
     model_id: &str,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let (backend, self_test) =
-        crate::load_with_self_test(path).map_err(|e| format!("Failed to load model: {}", e))?;
+        crate::load_with_self_test(path).map_err(|e| CommandError::Transcription {
+            message: format!("Failed to load model: {e}"),
+        })?;
 
     if let Err(e) = self_test {
         log::warn!(
@@ -268,7 +274,7 @@ fn load_model_internal(
 pub async fn repair_active_model(
     app: AppHandle,
     _state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     run_repair_active_model(&app).await;
     Ok(())
 }

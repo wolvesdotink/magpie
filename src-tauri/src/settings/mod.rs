@@ -5,7 +5,6 @@ pub use error::SettingsError;
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -114,12 +113,14 @@ struct SettingsFile {
 }
 
 /// Get the path to the settings JSON file
-fn settings_path() -> Result<PathBuf> {
-    let proj_dirs = ProjectDirs::from("com", "magpie", "Magpie")
-        .context("Failed to determine app data directory")?;
+fn settings_path() -> std::result::Result<PathBuf, SettingsError> {
+    let proj_dirs = ProjectDirs::from("com", "magpie", "Magpie").ok_or(SettingsError::NoDataDir)?;
 
     let data_dir = proj_dirs.data_dir();
-    std::fs::create_dir_all(data_dir).context("Failed to create data directory")?;
+    std::fs::create_dir_all(data_dir).map_err(|source| SettingsError::Io {
+        path: data_dir.to_path_buf(),
+        source,
+    })?;
 
     Ok(data_dir.join("settings.json"))
 }
@@ -229,10 +230,13 @@ impl UserSettings {
     }
 
     /// Persist current settings to disk as the versioned envelope.
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&self) -> std::result::Result<(), SettingsError> {
         let path = settings_path()?;
-        let json = serialize_versioned_settings(self).context("Failed to serialize settings")?;
-        std::fs::write(&path, json).context("Failed to write settings file")?;
+        let json = serialize_versioned_settings(self)?;
+        std::fs::write(&path, json).map_err(|source| SettingsError::Io {
+            path: path.clone(),
+            source,
+        })?;
         log::info!("Settings saved to {}", path.display());
         Ok(())
     }

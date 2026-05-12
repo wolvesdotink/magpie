@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, State};
 
+use crate::command_error::CommandError;
 use crate::hotkey;
 use crate::state::{lock_or_recover, AppState};
 
@@ -19,7 +20,7 @@ use crate::state::{lock_or_recover, AppState};
 pub fn restart_fn_key_monitor_inner(
     app: &AppHandle,
     state: &Arc<AppState>,
-) -> Result<bool, String> {
+) -> Result<bool, CommandError> {
     // Stop the existing monitor before starting a new one
     if let Some(handle) = lock_or_recover(&state.fn_key_monitor).take() {
         handle.stop();
@@ -31,7 +32,9 @@ pub fn restart_fn_key_monitor_inner(
     let tx = match lock_or_recover(&state.recording_tx).as_ref() {
         Some(tx) => tx.clone(),
         None => {
-            return Err("Cannot restart fn key monitor: recording channel not initialized".into());
+            return Err(CommandError::other(
+                "Cannot restart fn key monitor: recording channel not initialized",
+            ));
         }
     };
 
@@ -49,7 +52,7 @@ pub fn restart_fn_key_monitor_inner(
 pub fn restart_fn_key_monitor(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
-) -> Result<bool, String> {
+) -> Result<bool, CommandError> {
     restart_fn_key_monitor_inner(&app, state.inner())
 }
 

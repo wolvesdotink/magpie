@@ -17,9 +17,10 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, State};
 
+use crate::command_error::CommandError;
 use crate::correction;
 use crate::events::{self, event_names};
-use crate::models::{downloader, storage};
+use crate::models::{downloader, storage, ModelError};
 use crate::state::{lock_or_recover, AppState};
 use crate::transcription::backend::CancellationToken;
 
@@ -31,8 +32,8 @@ pub fn get_available_correction_models() -> Vec<correction::registry::Correction
 }
 
 #[tauri::command]
-pub fn get_downloaded_correction_models() -> Result<Vec<String>, String> {
-    storage::list_downloaded_correction_models().map_err(|e| e.to_string())
+pub fn get_downloaded_correction_models() -> Result<Vec<String>, CommandError> {
+    Ok(storage::list_downloaded_correction_models()?)
 }
 
 #[tauri::command]
@@ -40,9 +41,9 @@ pub async fn download_correction_model(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     model_id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let model_info = correction::registry::find_correction_model(&model_id)
-        .ok_or_else(|| format!("Unknown correction model: {}", model_id))?;
+        .ok_or(ModelError::UnknownId(model_id.clone()))?;
 
     // Register a cancellation token so `cancel_download` can interrupt
     // the stream loop. Removed unconditionally on every exit path below.
@@ -70,7 +71,7 @@ pub async fn download_correction_model(
 
     let path = match result {
         Ok(p) => p,
-        Err(downloader::DownloadError::Cancelled) => {
+        Err(ModelError::Cancelled) => {
             log::info!(
                 "Correction-model download of {} cancelled by user",
                 model_id
@@ -80,10 +81,10 @@ pub async fn download_correction_model(
                 event_names::MODEL_DOWNLOAD_CANCELLED,
                 serde_json::json!({ "modelId": model_id }),
             );
-            return Err("Download cancelled".to_string());
+            return Err(CommandError::Cancelled);
         }
-        Err(downloader::DownloadError::Other(e)) => {
-            return Err(format!("Download failed: {}", e));
+        Err(e) => {
+            return Err(e.into());
         }
     };
 
@@ -98,7 +99,7 @@ pub async fn download_correction_model(
     // re-downloading.
     if let Err(e) = load_correction_model_internal(&app, &state, &path, &model_id) {
         log::error!("Correction model downloaded but failed to load: {}", e);
-        return Err(format!("Model downloaded but failed to load: {}", e));
+        return Err(e);
     }
 
     // Persist the selection so the correction model auto-loads on next launch
@@ -118,14 +119,17 @@ pub fn select_correction_model(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     model_id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let model_info = correction::registry::find_correction_model(&model_id)
-        .ok_or_else(|| format!("Unknown correction model: {}", model_id))?;
+        .ok_or(ModelError::UnknownId(model_id.clone()))?;
 
-    let path = storage::model_path(&model_info.filename).map_err(|e| e.to_string())?;
+    let path = storage::model_path(&model_info.filename)?;
 
     if !path.exists() {
-        return Err(format!("Correction model {} is not downloaded", model_id));
+        return Err(ModelError::UnknownId(format!(
+            "{model_id} (correction model file missing on disk)"
+        ))
+        .into());
     }
 
     load_correction_model_internal(&app, &state, &path, &model_id)?;
@@ -147,11 +151,11 @@ pub fn delete_correction_model_file(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     model_id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let model_info = correction::registry::find_correction_model(&model_id)
-        .ok_or_else(|| format!("Unknown correction model: {}", model_id))?;
+        .ok_or(ModelError::UnknownId(model_id.clone()))?;
 
-    storage::delete_correction_model(&model_info.filename).map_err(|e| e.to_string())?;
+    storage::delete_correction_model(&model_info.filename)?;
 
     // If the deleted model was the active one, clear the selection and unload
     {
@@ -203,13 +207,13 @@ fn load_correction_model_internal(
     state: &State<'_, Arc<AppState>>,
     path: &std::path::Path,
     model_id: &str,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     // Initialize llama backend if needed
     {
         let mut backend_guard = lock_or_recover(&state.llama_backend);
         if backend_guard.is_none() {
             let backend = llama_cpp_2::llama_backend::LlamaBackend::init()
-                .map_err(|e| format!("Failed to init llama backend: {:?}", e))?;
+                .map_err(|e| crate::correction::CorrectionError::BackendInit(format!("{e:?}")))?;
             *backend_guard = Some(backend);
         }
     }
@@ -217,10 +221,9 @@ fn load_correction_model_internal(
     let backend_guard = lock_or_recover(&state.llama_backend);
     let backend = backend_guard
         .as_ref()
-        .ok_or_else(|| "Llama backend not initialized".to_string())?;
+        .ok_or(crate::correction::CorrectionError::NotLoaded)?;
 
-    let model = correction::engine::load_correction_model(backend, path)
-        .map_err(|e| format!("Failed to load correction model: {}", e))?;
+    let model = correction::engine::load_correction_model(backend, path)?;
 
     {
         let mut cm = lock_or_recover(&state.correction_model);

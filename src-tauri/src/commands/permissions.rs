@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use crate::command_error::CommandError;
 use crate::events::PermissionsPayload;
 use crate::state::AppState;
 
@@ -29,19 +30,19 @@ pub fn request_microphone_permission() -> bool {
 }
 
 #[tauri::command]
-pub fn open_microphone_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn open_microphone_settings(state: State<'_, Arc<AppState>>) -> Result<(), CommandError> {
     state
         .suppress_hide
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    crate::permissions::open_microphone_settings().map_err(|e| e.to_string())
+    crate::permissions::open_microphone_settings().map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn open_accessibility_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn open_accessibility_settings(state: State<'_, Arc<AppState>>) -> Result<(), CommandError> {
     state
         .suppress_hide
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    crate::permissions::open_accessibility_settings().map_err(|e| e.to_string())
+    crate::permissions::open_accessibility_settings().map_err(CommandError::from)
 }
 
 /// Trigger the Input Monitoring TCC prompt. On first call this prompts the
@@ -54,9 +55,9 @@ pub fn request_input_monitoring_permission() -> bool {
 }
 
 #[tauri::command]
-pub fn open_input_monitoring_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn open_input_monitoring_settings(state: State<'_, Arc<AppState>>) -> Result<(), CommandError> {
     state
         .suppress_hide
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    crate::permissions::open_input_monitoring_settings().map_err(|e| e.to_string())
+    crate::permissions::open_input_monitoring_settings().map_err(CommandError::from)
 }

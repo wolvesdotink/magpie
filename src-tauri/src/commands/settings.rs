@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, State};
 
+use crate::command_error::CommandError;
 use crate::state::{lock_or_recover, AppState};
 
 /// Get the current UserSettings.
@@ -86,16 +87,16 @@ pub fn update_global_shortcut(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     shortcut: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     use crate::recording::RecordingCommand;
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
     let new_str = shortcut
         .clone()
         .unwrap_or_else(|| crate::DEFAULT_SHORTCUT.to_string());
-    let new_shortcut: Shortcut = new_str
-        .parse()
-        .map_err(|e| format!("Invalid shortcut '{}': {}", new_str, e))?;
+    let new_shortcut: Shortcut = new_str.parse().map_err(|e| CommandError::InvalidArgument {
+        message: format!("Invalid shortcut '{}': {}", new_str, e),
+    })?;
 
     // Best-effort unregister of the previously-registered shortcut so we don't
     // leak a stale binding when the user switches combinations. Errors are
@@ -110,7 +111,7 @@ pub fn update_global_shortcut(
     // Clone the recording-command sender so the callback can dispatch toggles.
     let tx = match lock_or_recover(&state.recording_tx).as_ref() {
         Some(tx) => tx.clone(),
-        None => return Err("Recording channel not initialized".into()),
+        None => return Err(CommandError::other("Recording channel not initialized")),
     };
 
     app.global_shortcut()
@@ -121,7 +122,7 @@ pub fn update_global_shortcut(
                 }
             }
         })
-        .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+        .map_err(|e| CommandError::other(format!("Failed to register shortcut: {}", e)))?;
 
     // Persist the new value (or `None` for "use default") and update the
     // tracked string so the next re-register knows what to unregister.

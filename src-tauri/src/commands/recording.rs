@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 
 use crate::audio;
+use crate::command_error::CommandError;
 use crate::correction;
 use crate::correction_detector;
 use crate::events::{
@@ -36,18 +37,21 @@ use crate::tray::{self, TrayState};
 pub async fn start_recording(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     if state.is_recording() {
-        return Err("Already recording".to_string());
+        return Err(CommandError::InvalidArgument {
+            message: "Already recording".into(),
+        });
     }
 
     if state.is_processing() {
-        return Err("Currently processing".to_string());
+        return Err(CommandError::InvalidArgument {
+            message: "Currently processing".into(),
+        });
     }
 
     let state_arc = state.inner().clone();
-    let (stream, sample_rate) = audio::capture::start_recording(&state_arc)
-        .map_err(|e| format!("Failed to start recording: {}", e))?;
+    let (stream, sample_rate) = audio::capture::start_recording(&state_arc)?;
 
     {
         let mut sr = lock_or_recover(&state.capture_sample_rate);
@@ -141,9 +145,14 @@ pub async fn start_recording(
 }
 
 #[tauri::command]
-pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub async fn stop_recording(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), CommandError> {
     if !state.is_recording() {
-        return Err("Not recording".to_string());
+        return Err(CommandError::InvalidArgument {
+            message: "Not recording".into(),
+        });
     }
 
     // Drop the stream to stop recording
@@ -422,7 +431,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
 pub async fn toggle_recording(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     if state.is_recording() {
         stop_recording(app, state).await
     } else {
@@ -438,9 +447,11 @@ pub async fn toggle_recording(
 pub async fn cancel_recording(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     if !state.is_recording() {
-        return Err("Not recording".to_string());
+        return Err(CommandError::InvalidArgument {
+            message: "Not recording".into(),
+        });
     }
 
     // Drop the audio stream — mirrors stop_recording's first step.
@@ -486,12 +497,15 @@ pub async fn cancel_recording(
 /// `cancel_recording` so the binding only exists while audio is being
 /// captured. Outside the recording window, Escape passes through to whichever
 /// app has focus.
-fn register_escape_shortcut(app: &AppHandle) -> Result<(), String> {
+fn register_escape_shortcut(app: &AppHandle) -> Result<(), CommandError> {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-    let escape_shortcut: Shortcut = "Escape"
-        .parse()
-        .map_err(|e| format!("Failed to parse Escape shortcut: {}", e))?;
+    let escape_shortcut: Shortcut =
+        "Escape"
+            .parse()
+            .map_err(|e| CommandError::InvalidArgument {
+                message: format!("Failed to parse Escape shortcut: {e}"),
+            })?;
 
     app.global_shortcut()
         .on_shortcut(escape_shortcut, |app, _shortcut, event| {
@@ -509,7 +523,7 @@ fn register_escape_shortcut(app: &AppHandle) -> Result<(), String> {
                 });
             }
         })
-        .map_err(|e| format!("Failed to register Escape shortcut: {}", e))?;
+        .map_err(|e| CommandError::other(format!("Failed to register Escape shortcut: {e}")))?;
 
     log::debug!("Escape registered as cancel-recording shortcut");
     Ok(())

@@ -1,13 +1,9 @@
 //! Errors produced by the llama.cpp-backed self-correction engine.
-//!
-//! Currently unused in production paths — Phase 1 scaffolding. See
-//! `audio/error.rs` for the migration rationale.
 
 use std::path::PathBuf;
 
 use thiserror::Error;
 
-#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 #[derive(Debug, Error)]
 pub enum CorrectionError {
     /// `LlamaBackend::init` failed. Should never happen in practice; if it
@@ -31,5 +27,4 @@ pub enum CorrectionError {
     NotLoaded,
 }
 
-#[allow(dead_code)] // Phase 1 scaffolding; consumers migrate in a later phase.
 pub type Result<T> = std::result::Result<T, CorrectionError>;

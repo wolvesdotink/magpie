@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
 
+use crate::audio::{AudioError, Result};
 use crate::state::{lock_or_recover, AppState};
 
 /// Start recording from the default input device.
@@ -12,13 +12,11 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
-        .context("No input device available")?;
+        .ok_or(AudioError::NoInputDevice)?;
 
     log::info!("Using input device: {}", device.name().unwrap_or_default());
 
-    let config = device
-        .default_input_config()
-        .context("Failed to get default input config")?;
+    let config = device.default_input_config()?;
 
     let sample_rate = config.sample_rate().0;
     let channels = config.channels() as usize;
@@ -102,10 +100,10 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
                 None,
             )?
         }
-        format => anyhow::bail!("Unsupported sample format: {:?}", format),
+        format => return Err(AudioError::UnsupportedSampleFormat(format)),
     };
 
-    stream.play().context("Failed to start audio stream")?;
+    stream.play()?;
 
     Ok((stream, sample_rate))
 }
