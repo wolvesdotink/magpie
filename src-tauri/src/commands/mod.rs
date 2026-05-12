@@ -4,8 +4,12 @@
 // lib.rs's `invoke_handler!` macro and from cross-module callers like
 // tray.rs's `commands::run_repair_active_model`.
 pub mod features;
+pub mod hotkey;
+pub mod permissions;
 pub mod vocabulary;
 pub use features::*;
+pub use hotkey::*;
+pub use permissions::*;
 pub use vocabulary::*;
 
 use std::sync::Arc;
@@ -19,7 +23,6 @@ use crate::events::{
     self, event_names, AppStatePayload, AudioAmplitudePayload, PermissionsPayload,
     TranscriptionError, TranscriptionResult,
 };
-use crate::hotkey;
 use crate::models::{downloader, registry, storage};
 use crate::output;
 use crate::state::{lock_or_recover, AppState};
@@ -926,112 +929,12 @@ pub async fn run_repair_active_model(app: &AppHandle) {
     }
 }
 
-// ── Permissions ────────────────────────────────────────────────────
-
-#[tauri::command]
-pub fn check_permissions() -> PermissionsPayload {
-    let mic_status = crate::permissions::microphone_authorization_status();
-    PermissionsPayload {
-        microphone: mic_status == crate::permissions::MicrophoneAuthStatus::Authorized,
-        accessibility: crate::permissions::is_accessibility_trusted(),
-        input_monitoring: crate::permissions::is_input_monitoring_trusted(),
-    }
-}
-
-#[tauri::command]
-pub fn request_microphone_permission() -> bool {
-    crate::permissions::request_microphone_access()
-}
-
-#[tauri::command]
-pub fn open_microphone_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state
-        .suppress_hide
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    crate::permissions::open_microphone_settings().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn open_accessibility_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state
-        .suppress_hide
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    crate::permissions::open_accessibility_settings().map_err(|e| e.to_string())
-}
-
-/// Trigger the Input Monitoring TCC prompt. On first call this prompts the
-/// user and adds the app to System Settings → Privacy & Security → Input
-/// Monitoring so the toggle becomes available. After the user grants it,
-/// the Fn key monitor must be restarted to pick up the new permission.
-#[tauri::command]
-pub fn request_input_monitoring_permission() -> bool {
-    crate::permissions::request_input_monitoring_access()
-}
-
-#[tauri::command]
-pub fn open_input_monitoring_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state
-        .suppress_hide
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-    crate::permissions::open_input_monitoring_settings().map_err(|e| e.to_string())
-}
-
 /// Restart the app. Re-execs the current binary; on macOS this lets a freshly
 /// granted Accessibility permission take effect when AX trust was cached as
 /// `false` for the previous process lifetime.
 #[tauri::command]
 pub fn restart_app(app: tauri::AppHandle) {
     app.restart();
-}
-
-// ── Hotkey ─────────────────────────────────────────────────────────
-
-/// Rust-callable helper that stops any running Fn key monitor and starts a
-/// fresh one. Factored out so the watchdog in `lib.rs` can call it without
-/// going through the Tauri command machinery (which requires `State<'_, _>`).
-pub fn restart_fn_key_monitor_inner(
-    app: &AppHandle,
-    state: &Arc<AppState>,
-) -> Result<bool, String> {
-    // Stop the existing monitor before starting a new one
-    if let Some(handle) = lock_or_recover(&state.fn_key_monitor).take() {
-        handle.stop();
-    }
-
-    let activation_mode = lock_or_recover(&state.settings).activation_mode.clone();
-
-    // Clone the recording command sender for the new monitor
-    let tx = match lock_or_recover(&state.recording_tx).as_ref() {
-        Some(tx) => tx.clone(),
-        None => {
-            return Err("Cannot restart fn key monitor: recording channel not initialized".into());
-        }
-    };
-
-    let (new_handle, tap_ok) = hotkey::start_fn_key_monitor(app.clone(), tx, activation_mode);
-    *lock_or_recover(&state.fn_key_monitor) = Some(new_handle);
-
-    if !tap_ok {
-        log::warn!("restart_fn_key_monitor: CGEventTap creation failed");
-    }
-
-    Ok(tap_ok)
-}
-
-#[tauri::command]
-pub fn restart_fn_key_monitor(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<bool, String> {
-    restart_fn_key_monitor_inner(&app, state.inner())
-}
-
-#[tauri::command]
-pub fn get_fn_key_monitor_status(state: State<'_, Arc<AppState>>) -> bool {
-    lock_or_recover(&state.fn_key_monitor)
-        .as_ref()
-        .map(|h| h.is_active())
-        .unwrap_or(false)
 }
 
 // ── Global Shortcut ────────────────────────────────────────────────
