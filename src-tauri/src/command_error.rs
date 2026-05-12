@@ -76,11 +76,9 @@ pub enum CommandError {
     /// Permission required to perform this command is not granted at the OS
     /// level (microphone, accessibility, input monitoring).
     ///
-    /// Reserved for future use — today the permission probes return raw
-    /// booleans rather than `Result`s, so this variant has no construction
-    /// site yet. Kept in the wire schema so consumers (frontend `errors.ts`)
-    /// can ship the discriminant before the first per-command migration.
-    #[allow(dead_code)]
+    /// Constructed today by `start_recording`'s microphone pre-flight; the
+    /// frontend dispatches on `kind: "permissionDenied"` to surface a
+    /// "Grant access" CTA instead of an opaque audio-device error.
     #[error("permission denied: {permission}")]
     PermissionDenied { permission: String },
 

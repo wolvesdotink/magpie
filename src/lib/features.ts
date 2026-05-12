@@ -5,8 +5,7 @@
 // guards UI affordances behind these — e.g. show the "Transcribe files…"
 // tray item only when `fileImport` is true.
 //
-// Adding a new flag: add the field here AND in features.rs in the same PR
-// and update ADR-0002.
+// Adding a new flag: add the field here AND in features.rs in the same PR.
 
 export interface FeatureFlags {
   streamingPreview: boolean;

@@ -74,11 +74,9 @@ jobs:
       - name: Format check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Clippy
-        # NOTE: not yet `-D warnings`. We're enabling clippy in CI but treating
-        # the existing 11k LOC as "background debt" rather than blocking PRs
-        # on it. Per-module `#![deny(clippy::all)]` opt-in is added as files
-        # are touched (Phase 1). Promote this to `-D warnings` once the
-        # backlog is paid down.
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+        # The Phase 0 backlog has been paid down (commit 85c9b4c) and the
+        # local `bun run rust:clippy` already runs with `-D warnings`, so CI
+        # matches. New warnings now fail the PR.
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Test
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-features

@@ -50,6 +50,19 @@ pub async fn start_recording(
         });
     }
 
+    // Pre-flight the microphone TCC grant. cpal will otherwise open a stream
+    // that delivers silent samples (or fails with an opaque device error,
+    // depending on macOS version), and the user gets a transcription full
+    // of nothing without knowing why. Returning a typed `PermissionDenied`
+    // here lets the frontend dispatch to the "Grant microphone access" CTA.
+    if crate::permissions::microphone_authorization_status()
+        != crate::permissions::MicrophoneAuthStatus::Authorized
+    {
+        return Err(CommandError::PermissionDenied {
+            permission: "microphone".into(),
+        });
+    }
+
     let state_arc = state.inner().clone();
     let (stream, sample_rate) = audio::capture::start_recording(&state_arc)?;
 

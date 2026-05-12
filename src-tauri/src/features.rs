@@ -14,7 +14,7 @@
 //! 3. **Compile-time defaults** — [`FeatureFlags::default`] is the safe
 //!    fallback for a fresh install or a flag the user has not touched.
 //!
-//! Lifecycle, per ADR-0002:
+//! Lifecycle:
 //!   1. Flag added, defaults `false`. Code paths guarded.
 //!   2. Flag flipped to `true` by default once the feature passes UAT.
 //!   3. Flag removed once the feature has shipped for a full release cycle.
