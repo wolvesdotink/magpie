@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useSettings } from '@/composables/useSettings';
+import { useConfirmAction } from '@/composables/useConfirmAction';
+import SettingsSection from '@/components/base/SettingsSection.vue';
+import SettingsRow from '@/components/base/SettingsRow.vue';
+import BaseToggle from '@/components/base/BaseToggle.vue';
+import BaseButton from '@/components/base/BaseButton.vue';
+import BaseInput from '@/components/base/BaseInput.vue';
+import BaseCard from '@/components/base/BaseCard.vue';
 import {
   getVocabulary,
   addVocabularyEntry,
@@ -15,7 +22,7 @@ const vocabularyEntries = ref<VocabularyEntry[]>([]);
 const showAddVocab = ref(false);
 const vocabWrong = ref('');
 const vocabCorrect = ref('');
-const confirmClearVocab = ref(false);
+const confirmClearVocab = useConfirmAction();
 
 async function loadVocabulary() {
   try {
@@ -50,14 +57,7 @@ async function handleRemoveVocab(wrong: string) {
 }
 
 async function handleClearVocab() {
-  if (!confirmClearVocab.value) {
-    confirmClearVocab.value = true;
-    setTimeout(() => {
-      confirmClearVocab.value = false;
-    }, 3000);
-    return;
-  }
-  confirmClearVocab.value = false;
+  if (!confirmClearVocab.confirm()) return;
   try {
     await clearVocabulary();
     await loadVocabulary();
@@ -70,52 +70,43 @@ onMounted(loadVocabulary);
 </script>
 
 <template>
-  <section class="settings-section">
-    <div class="section-header">
-      <div class="section-icon">
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-        </svg>
-      </div>
-      <span class="section-label">Vocabulary</span>
+  <SettingsSection label="Vocabulary">
+    <template #icon>
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+      </svg>
+    </template>
+    <template #header-extra>
       <span
         v-if="vocabularyEntries.length > 0"
         class="ml-auto text-[9px] text-ink-faint tabular-nums"
       >
         {{ vocabularyEntries.length }} {{ vocabularyEntries.length === 1 ? 'word' : 'words' }}
       </span>
-    </div>
+    </template>
 
-    <!-- Learn from corrections toggle -->
-    <div class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge">
-      <div class="flex flex-col min-w-0 mr-3">
-        <span class="text-[12px] font-semibold text-ink"> Learn from corrections </span>
-        <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-          Automatically learn words when you correct transcriptions
-        </span>
-      </div>
-      <button
-        class="toggle-switch flex-shrink-0"
-        :class="settings?.vocabularyLearning ? 'toggle-on' : 'toggle-off'"
-        @click="updateVocabularyLearning(!settings?.vocabularyLearning)"
-      >
-        <div class="toggle-thumb" />
-      </button>
-    </div>
+    <SettingsRow
+      label="Learn from corrections"
+      helper="Automatically learn words when you correct transcriptions"
+    >
+      <BaseToggle
+        :model-value="!!settings?.vocabularyLearning"
+        @update:model-value="updateVocabularyLearning($event)"
+      />
+    </SettingsRow>
 
-    <!-- Vocabulary entries list -->
     <div v-if="vocabularyEntries.length > 0" class="mt-2">
-      <span class="subsection-label">Learned words</span>
+      <span class="text-[10px] font-semibold text-ink-faint tracking-[0.02em]">Learned words</span>
       <div class="flex flex-col gap-1 mt-1.5">
         <div
           v-for="entry in vocabularyEntries"
@@ -170,7 +161,6 @@ onMounted(loadVocabulary);
       </div>
     </div>
 
-    <!-- Add word form -->
     <div class="mt-2">
       <button
         v-if="!showAddVocab"
@@ -193,75 +183,78 @@ onMounted(loadVocabulary);
         Add word
       </button>
 
-      <div v-else class="flex flex-col gap-2 p-2.5 rounded-lg bg-panel border border-edge">
-        <div class="flex gap-2 items-center">
-          <input
-            v-model="vocabWrong"
-            type="text"
-            placeholder="Wrong word"
-            class="flex-1 min-w-0 px-2 py-1 text-[11px] rounded-md bg-raised border border-edge text-ink placeholder:text-ink-faint/50 focus:outline-none focus:border-gold/40 transition-colors duration-150"
-            @keydown.enter="handleAddVocab"
-          />
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="flex-shrink-0 text-ink-faint"
-          >
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-          </svg>
-          <input
-            v-model="vocabCorrect"
-            type="text"
-            placeholder="Correct word"
-            class="flex-1 min-w-0 px-2 py-1 text-[11px] rounded-md bg-raised border border-edge text-ink placeholder:text-ink-faint/50 focus:outline-none focus:border-gold/40 transition-colors duration-150"
-            @keydown.enter="handleAddVocab"
-          />
+      <BaseCard v-else>
+        <div class="flex flex-col gap-2">
+          <div class="flex gap-2 items-center">
+            <BaseInput
+              v-model="vocabWrong"
+              size="sm"
+              placeholder="Wrong word"
+              class="flex-1"
+              @keydown.enter="handleAddVocab"
+            />
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="flex-shrink-0 text-ink-faint"
+            >
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+            <BaseInput
+              v-model="vocabCorrect"
+              size="sm"
+              placeholder="Correct word"
+              class="flex-1"
+              @keydown.enter="handleAddVocab"
+            />
+          </div>
+          <div class="flex gap-1.5 justify-end">
+            <BaseButton
+              variant="link"
+              size="sm"
+              @click="
+                showAddVocab = false;
+                vocabWrong = '';
+                vocabCorrect = '';
+              "
+            >
+              Cancel
+            </BaseButton>
+            <BaseButton
+              variant="primary"
+              size="sm"
+              :disabled="
+                !vocabWrong.trim() ||
+                !vocabCorrect.trim() ||
+                vocabWrong.trim() === vocabCorrect.trim()
+              "
+              @click="handleAddVocab"
+            >
+              Save
+            </BaseButton>
+          </div>
         </div>
-        <div class="flex gap-1.5 justify-end">
-          <button
-            class="px-2 py-0.5 rounded-md text-[10px] font-semibold text-ink-faint hover:text-ink transition-colors duration-150"
-            @click="
-              showAddVocab = false;
-              vocabWrong = '';
-              vocabCorrect = '';
-            "
-          >
-            Cancel
-          </button>
-          <button
-            class="px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-gold text-canvas hover:bg-gold-hover transition-all duration-150 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            :disabled="
-              !vocabWrong.trim() ||
-              !vocabCorrect.trim() ||
-              vocabWrong.trim() === vocabCorrect.trim()
-            "
-            @click="handleAddVocab"
-          >
-            Save
-          </button>
-        </div>
-      </div>
+      </BaseCard>
     </div>
 
-    <!-- Clear all button -->
     <button
       v-if="vocabularyEntries.length > 0"
       class="mt-2 flex items-center justify-center gap-1.5 w-full px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-150"
       :class="
-        confirmClearVocab
+        confirmClearVocab.isArmed()
           ? 'bg-flame/15 border border-flame/30 text-flame'
           : 'bg-panel border border-edge text-ink-faint hover:text-flame hover:border-flame/20 hover:bg-flame/5'
       "
       @click="handleClearVocab"
     >
-      {{ confirmClearVocab ? 'Click again to clear all' : 'Clear all words' }}
+      {{ confirmClearVocab.isArmed() ? 'Click again to clear all' : 'Clear all words' }}
     </button>
-  </section>
+  </SettingsSection>
 </template>

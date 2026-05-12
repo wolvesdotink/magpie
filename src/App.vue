@@ -12,7 +12,7 @@ import {
 import { onPermissionsStatus } from '@/lib/events';
 import { useAppState } from '@/composables/useAppState';
 import SetupWizard from '@/components/SetupWizard.vue';
-import ModelPicker from '@/components/ModelPicker.vue';
+import ModelSelector from '@/components/shared/ModelSelector.vue';
 import TrayPopover from '@/components/TrayPopover.vue';
 import PermissionsGuide from '@/components/PermissionsGuide.vue';
 
@@ -170,7 +170,12 @@ async function openSettings() {
 
     <PermissionsGuide v-else-if="currentView === 'permissions'" @granted="onPermissionsGranted" />
 
-    <ModelPicker v-else-if="currentView === 'model-picker'" @model-ready="onModelReady" />
+    <ModelSelector
+      v-else-if="currentView === 'model-picker'"
+      with-chrome
+      auto-detect-tab
+      @done="onModelReady"
+    />
 
     <TrayPopover v-else-if="currentView === 'main'" @open-settings="openSettings" />
   </div>

@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useSettings } from '@/composables/useSettings';
 import { useUpdater } from '@/composables/useUpdater';
+import SettingsSection from '@/components/base/SettingsSection.vue';
+import SettingsRow from '@/components/base/SettingsRow.vue';
+import BaseToggle from '@/components/base/BaseToggle.vue';
+import BaseButton from '@/components/base/BaseButton.vue';
+import BaseCard from '@/components/base/BaseCard.vue';
 
 const RELEASES_URL = 'https://github.com/wolvesdotink/magpie/releases/latest';
 
 const { state, checkNow, install, restart } = useUpdater();
+const { settings, updateUpdateChannel } = useSettings();
+
+async function toggleBetaChannel(value: boolean) {
+  await updateUpdateChannel(value ? 'beta' : 'stable');
+}
 
 const percent = computed(() => {
   if (state.value.totalBytes <= 0) return null;
@@ -37,78 +48,52 @@ async function openReleases() {
 </script>
 
 <template>
-  <section class="settings-section" style="animation-delay: 240ms">
-    <div class="section-header">
-      <div class="section-icon">
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M21 12a9 9 0 11-3-6.7L21 8" />
-          <polyline points="21 3 21 8 16 8" />
-        </svg>
-      </div>
-      <span class="section-label">Updates</span>
-    </div>
-
-    <!-- Idle / no-update — show check button -->
-    <div
-      v-if="state.status === 'idle' || state.status === 'checking'"
-      class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge"
-    >
-      <div class="flex flex-col min-w-0 mr-3">
-        <span class="text-[12px] font-semibold text-ink"> You're up to date </span>
-        <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-          Magpie checks for updates automatically when settings open.
-        </span>
-      </div>
-      <button
-        class="flex-shrink-0 px-2.5 py-1 rounded-md bg-raised border border-edge text-[10px] font-semibold text-ink-muted hover:bg-hover hover:text-ink hover:border-edge-strong transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-        :disabled="checkButtonDisabled"
-        @click="checkNow"
+  <SettingsSection label="Updates">
+    <template #icon>
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        {{ checkButtonLabel }}
-      </button>
-    </div>
+        <path d="M21 12a9 9 0 11-3-6.7L21 8" />
+        <polyline points="21 3 21 8 16 8" />
+      </svg>
+    </template>
 
-    <!-- Update available -->
-    <div
-      v-else-if="state.status === 'available'"
-      class="p-3 rounded-lg bg-gold/[0.06] border border-gold/20"
+    <SettingsRow
+      v-if="state.status === 'idle' || state.status === 'checking'"
+      label="You're up to date"
+      helper="Magpie checks for updates automatically when settings open."
     >
+      <BaseButton size="sm" :disabled="checkButtonDisabled" @click="checkNow">
+        {{ checkButtonLabel }}
+      </BaseButton>
+    </SettingsRow>
+
+    <BaseCard v-else-if="state.status === 'available'" tone="gold" padding="lg">
       <div class="flex items-center justify-between mb-1.5">
         <div class="flex items-center gap-2">
           <div class="w-1.5 h-1.5 rounded-full bg-gold shadow-[0_0_4px_rgba(232,175,71,0.5)]" />
-          <span class="text-[12px] font-semibold text-ink"> Update available </span>
+          <span class="text-[12px] font-semibold text-ink">Update available</span>
           <span v-if="state.newVersion" class="text-[10px] text-ink-faint tabular-nums">
             {{ state.newVersion }}
           </span>
         </div>
-        <button
-          class="flex-shrink-0 px-2.5 py-1 rounded-md bg-gold text-canvas border-0 text-[10px] font-semibold hover:bg-gold-hover transition-all duration-150 active:scale-95"
-          @click="install"
-        >
-          Install
-        </button>
+        <BaseButton variant="primary" size="sm" @click="install"> Install </BaseButton>
       </div>
       <p v-if="state.notes" class="text-[11px] text-ink-muted leading-snug whitespace-pre-line">
         {{ state.notes }}
       </p>
-    </div>
+    </BaseCard>
 
-    <!-- Downloading -->
-    <div
-      v-else-if="state.status === 'downloading'"
-      class="p-3 rounded-lg bg-panel border border-edge"
-    >
+    <BaseCard v-else-if="state.status === 'downloading'" padding="lg">
       <div class="flex items-center justify-between mb-1.5">
-        <span class="text-[12px] font-semibold text-ink"> Installing update… </span>
+        <span class="text-[12px] font-semibold text-ink">Installing update…</span>
         <span v-if="percent !== null" class="text-[11px] text-ink-faint tabular-nums">
           {{ percent }}%
         </span>
@@ -119,52 +104,38 @@ async function openReleases() {
           :style="{ width: `${percent ?? 0}%` }"
         />
       </div>
-    </div>
+    </BaseCard>
 
-    <!-- Ready to restart -->
-    <div
+    <SettingsRow
       v-else-if="state.status === 'ready'"
-      class="flex items-center justify-between p-2.5 rounded-lg bg-leaf/[0.06] border border-leaf/20"
+      label="Update installed"
+      helper="Restart to start using the new version."
+      tone="leaf"
     >
-      <div class="flex flex-col min-w-0 mr-3">
-        <span class="text-[12px] font-semibold text-ink"> Update installed </span>
-        <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-          Restart to start using the new version.
-        </span>
-      </div>
-      <button
-        class="flex-shrink-0 px-2.5 py-1 rounded-md bg-ink text-canvas border-0 text-[10px] font-semibold hover:bg-ink/90 transition-all duration-150 active:scale-95"
-        @click="restart"
-      >
-        Restart
-      </button>
-    </div>
+      <BaseButton variant="primary" size="sm" @click="restart"> Restart </BaseButton>
+    </SettingsRow>
 
-    <!-- Error -->
-    <div
-      v-else-if="state.status === 'error'"
-      class="p-2.5 rounded-lg bg-flame/10 border border-flame/20"
-    >
+    <BaseCard v-else-if="state.status === 'error'" tone="flame">
       <div class="flex items-center justify-between mb-1.5">
-        <span class="text-[11px] font-semibold text-flame"> Update failed </span>
+        <span class="text-[11px] font-semibold text-flame">Update failed</span>
         <div class="flex gap-1.5">
-          <button
-            class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-raised border border-edge text-ink-muted hover:bg-hover hover:text-ink hover:border-edge-strong transition-all duration-150 active:scale-95"
-            @click="checkNow"
-          >
-            Retry
-          </button>
-          <button
-            class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-raised border border-edge text-ink-muted hover:bg-hover hover:text-ink hover:border-edge-strong transition-all duration-150 active:scale-95"
-            @click="openReleases"
-          >
-            Manual DL
-          </button>
+          <BaseButton size="sm" @click="checkNow">Retry</BaseButton>
+          <BaseButton size="sm" @click="openReleases">Manual DL</BaseButton>
         </div>
       </div>
       <p v-if="state.error" class="text-[10px] text-flame/80 leading-snug break-all">
         {{ state.error }}
       </p>
-    </div>
-  </section>
+    </BaseCard>
+
+    <SettingsRow
+      label="Receive beta updates"
+      helper="Get prerelease builds when available. May be less stable."
+    >
+      <BaseToggle
+        :model-value="settings?.updateChannel === 'beta'"
+        @update:model-value="toggleBetaChannel"
+      />
+    </SettingsRow>
+  </SettingsSection>
 </template>

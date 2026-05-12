@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { checkPermissions } from '@/lib/commands';
 import WelcomeStep from '@/components/setup/WelcomeStep.vue';
 import PermissionsStep from '@/components/setup/PermissionsStep.vue';
-import ModelStep from '@/components/setup/ModelStep.vue';
+import ModelSelector from '@/components/shared/ModelSelector.vue';
 import TranscriptionStep from '@/components/setup/TranscriptionStep.vue';
 
 const emit = defineEmits<{
@@ -72,7 +72,14 @@ onMounted(async () => {
 
     <WelcomeStep v-if="currentStep === 'welcome'" @next="nextStep" />
     <PermissionsStep v-else-if="currentStep === 'permissions'" @next="nextStep" />
-    <ModelStep v-else-if="currentStep === 'model'" @next="nextStep" />
+    <ModelSelector
+      v-else-if="currentStep === 'model'"
+      initial-tab="multilingual"
+      initial-selected-id="small"
+      ready-label="Continue"
+      download-label="Download & Continue"
+      @done="nextStep"
+    />
     <TranscriptionStep v-else-if="currentStep === 'transcription'" @finish="emit('complete')" />
 
     <!-- ════════════════ PROGRESS DOTS ════════════════ -->

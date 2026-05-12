@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted } from 'vue';
 import { useAppState } from '@/composables/useAppState';
+import { useToast } from '@/composables/useToast';
 import { toggleRecording } from '@/lib/commands';
 import { onVocabularyLearned } from '@/lib/events';
-import LanguageSelector from '@/components/LanguageSelector.vue';
+import LanguageDropdown from '@/components/shared/LanguageDropdown.vue';
+import StatusPanel from '@/components/shared/StatusPanel.vue';
+import TranscriptionDisplay from '@/components/shared/TranscriptionDisplay.vue';
+import BaseCard from '@/components/base/BaseCard.vue';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 
 defineEmits<{
@@ -12,26 +16,20 @@ defineEmits<{
 
 const { recording, processing, hasModel, lastTranscription, error } = useAppState();
 
-// ── Vocabulary toast ──
-const vocabToast = ref<{ wrong: string; correct: string } | null>(null);
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
+const { value: vocabToast, show: showVocabToast } = useToast<{ wrong: string; correct: string }>();
+
 const unlisteners: UnlistenFn[] = [];
 
 onMounted(async () => {
   unlisteners.push(
     await onVocabularyLearned((data) => {
-      vocabToast.value = { wrong: data.wrong, correct: data.correct };
-      if (toastTimer) clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => {
-        vocabToast.value = null;
-      }, 3000);
+      showVocabToast({ wrong: data.wrong, correct: data.correct });
     }),
   );
 });
 
 onUnmounted(() => {
   unlisteners.forEach((u) => u());
-  if (toastTimer) clearTimeout(toastTimer);
 });
 
 async function handleToggle() {
@@ -47,11 +45,9 @@ async function handleToggle() {
   <div
     class="flex flex-col h-full bg-canvas rounded-xl overflow-hidden shadow-elevated relative surface-grain"
   >
-    <!-- Decorative top edge highlight -->
     <div class="h-[1.5px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
 
     <div class="flex flex-col flex-1 px-5 pt-5 pb-4 gap-4 min-h-0">
-      <!-- ── Header ── -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <div
@@ -59,7 +55,7 @@ async function handleToggle() {
           >
             M
           </div>
-          <span class="font-bold text-[15px] tracking-tight text-ink"> Magpie </span>
+          <span class="font-bold text-[15px] tracking-tight text-ink">Magpie</span>
         </div>
         <div class="flex items-center gap-2">
           <button
@@ -95,53 +91,8 @@ async function handleToggle() {
         </div>
       </div>
 
-      <!-- ── Status Panel ── -->
-      <div
-        class="relative p-3.5 rounded-lg border transition-all duration-300"
-        :class="{
-          'bg-flame/[0.06] border-flame/30 shadow-glow-flame': recording,
-          'bg-panel border-edge shadow-soft': !recording,
-        }"
-      >
-        <!-- Recording -->
-        <div v-if="recording" class="flex items-center gap-2.5">
-          <div class="relative flex-shrink-0 w-2.5 h-2.5">
-            <div class="absolute inset-0 rounded-full bg-flame" />
-            <div class="absolute inset-0 rounded-full bg-flame animate-ping" />
-          </div>
-          <span class="text-[13px] font-semibold text-flame"> Recording… release Fn to stop </span>
-        </div>
+      <StatusPanel :recording="recording" :processing="processing" :has-model="hasModel" />
 
-        <!-- Processing -->
-        <div v-else-if="processing" class="flex items-center gap-2.5">
-          <div
-            class="w-3.5 h-3.5 rounded-full border-2 border-edge border-t-gold animate-spin flex-shrink-0"
-          />
-          <span class="text-[13px] font-semibold text-gold"> Transcribing… </span>
-        </div>
-
-        <!-- No model -->
-        <div v-else-if="!hasModel" class="flex items-center gap-2.5">
-          <div class="w-1.5 h-1.5 rounded-full bg-ink-faint flex-shrink-0" />
-          <span class="text-[13px] text-ink-faint">No model loaded</span>
-        </div>
-
-        <!-- Ready -->
-        <div v-else class="flex items-center gap-2.5">
-          <div class="w-1.5 h-1.5 rounded-full bg-leaf flex-shrink-0" />
-          <span class="text-[13px] text-ink-muted">
-            Ready — hold
-            <kbd
-              class="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-[10px] font-mono font-semibold leading-none bg-raised rounded border border-edge shadow-soft text-ink-faint"
-            >
-              Fn
-            </kbd>
-            to dictate
-          </span>
-        </div>
-      </div>
-
-      <!-- ── Record Button ── -->
       <button
         class="flex items-center justify-center gap-2 w-full py-3 rounded-lg text-[13px] font-semibold transition-all duration-200 active:scale-[0.97]"
         :class="
@@ -152,7 +103,6 @@ async function handleToggle() {
         :disabled="processing || !hasModel"
         @click="handleToggle"
       >
-        <!-- Microphone icon -->
         <svg
           v-if="!recording"
           width="16"
@@ -166,57 +116,19 @@ async function handleToggle() {
             d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
           />
         </svg>
-        <!-- Stop icon -->
         <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="6" width="12" height="12" rx="2" />
         </svg>
         {{ recording ? 'Stop' : 'Record' }}
       </button>
 
-      <!-- ── Last Transcription ── -->
-      <div v-if="lastTranscription" class="flex-1 flex flex-col gap-1.5 min-h-0">
-        <span class="text-[10px] uppercase tracking-[0.08em] font-semibold text-ink-faint">
-          Last transcription
-        </span>
-        <div
-          class="flex-1 p-3.5 text-[13px] leading-relaxed text-ink-muted bg-panel rounded-lg border border-edge shadow-well overflow-y-auto"
-        >
-          {{ lastTranscription }}
-        </div>
-      </div>
+      <TranscriptionDisplay :text="lastTranscription" :show-empty="!error" />
 
-      <!-- ── Empty State ── -->
-      <div
-        v-else-if="!error"
-        class="flex-1 flex flex-col items-center justify-center gap-2.5 bg-panel/50 rounded-lg border border-dashed border-edge/60 shadow-well"
-      >
-        <svg
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.2"
-          class="text-ink-faint/40"
-        >
-          <path
-            d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
-            stroke-linecap="round"
-          />
-          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5" stroke-linecap="round" />
-          <line x1="12" y1="19" x2="12" y2="22" stroke-linecap="round" />
-          <line x1="9" y1="22" x2="15" y2="22" stroke-linecap="round" />
-        </svg>
-        <span class="text-[11px] text-ink-faint/50 font-medium"> Transcriptions appear here </span>
-      </div>
-
-      <!-- ── Error ── -->
-      <div v-if="error" class="p-2.5 rounded-lg bg-flame/10 border border-flame/20">
+      <BaseCard v-if="error" tone="flame" padding="sm">
         <span class="text-[10px] text-flame">{{ error }}</span>
-      </div>
+      </BaseCard>
     </div>
 
-    <!-- ── Vocabulary Learned Toast ── -->
     <Transition name="toast">
       <div
         v-if="vocabToast"
@@ -236,7 +148,7 @@ async function handleToggle() {
           <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
           <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
         </svg>
-        <span class="text-[10px] text-gold font-semibold"> Learned: {{ vocabToast.wrong }} </span>
+        <span class="text-[10px] text-gold font-semibold">Learned: {{ vocabToast.wrong }}</span>
         <svg
           width="8"
           height="8"
@@ -257,7 +169,6 @@ async function handleToggle() {
       </div>
     </Transition>
 
-    <!-- ── Footer ── -->
     <div class="px-5 py-3 border-t border-edge bg-raised/40">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-1.5 text-[11px] text-ink-faint">
@@ -274,7 +185,7 @@ async function handleToggle() {
             ⌘⇧Space
           </kbd>
         </div>
-        <LanguageSelector />
+        <LanguageDropdown variant="compact" />
       </div>
     </div>
   </div>

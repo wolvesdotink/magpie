@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useSettings } from '@/composables/useSettings';
+import SettingsSection from '@/components/base/SettingsSection.vue';
+import SettingsRow from '@/components/base/SettingsRow.vue';
+import BaseToggle from '@/components/base/BaseToggle.vue';
+import BaseCard from '@/components/base/BaseCard.vue';
 import {
   getDownloadedCorrectionModels,
   downloadCorrectionModel,
@@ -79,7 +83,6 @@ async function handleDownloadCorrection(model: CorrectionModelInfo) {
   downloadingCorrectionModelId.value = model.id;
   try {
     await downloadCorrectionModel(model.id);
-    // Auto-select after download
     await selectCorrectionModel(model.id);
     await updateSelectedCorrectionModel(model.id);
   } catch (e) {
@@ -89,7 +92,6 @@ async function handleDownloadCorrection(model: CorrectionModelInfo) {
   } finally {
     downloadingCorrection.value = false;
     downloadingCorrectionModelId.value = null;
-    // Always refresh the list — the file may have been cleaned up on failure
     downloadedCorrectionFiles.value = await getDownloadedCorrectionModels();
   }
 }
@@ -123,10 +125,6 @@ async function handleDeleteCorrection(model: CorrectionModelInfo) {
 onMounted(async () => {
   downloadedCorrectionFiles.value = await getDownloadedCorrectionModels();
 
-  // Each section listens for ALL download events but only routes the ones
-  // whose modelId matches its own in-flight download. Whisper-model
-  // downloads (handled by ModelSection) and correction downloads (handled
-  // here) coexist on the same Tauri channel.
   unlisteners.push(
     await onModelDownloadProgress((progress) => {
       if (downloadingCorrectionModelId.value === progress.modelId) {
@@ -160,98 +158,65 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="settings-section">
-    <div class="section-header">
-      <div class="section-icon">
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-        </svg>
-      </div>
-      <span class="section-label">Transcription</span>
-    </div>
-
-    <!-- Filler word removal -->
-    <div class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge">
-      <div class="flex flex-col min-w-0 mr-3">
-        <span class="text-[12px] font-semibold text-ink"> Remove filler words </span>
-        <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-          Strips "um", "uh", "hmm" and similar
-        </span>
-      </div>
-      <button
-        class="toggle-switch flex-shrink-0"
-        :class="settings?.removeFillers ? 'toggle-on' : 'toggle-off'"
-        @click="updateRemoveFillers(!settings?.removeFillers)"
+  <SettingsSection label="Transcription">
+    <template #icon>
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        <div class="toggle-thumb" />
-      </button>
-    </div>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+      </svg>
+    </template>
 
-    <!-- Live partial-caption preview while recording -->
-    <div
-      class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge mt-2"
+    <SettingsRow label="Remove filler words" helper='Strips "um", "uh", "hmm" and similar'>
+      <BaseToggle
+        :model-value="!!settings?.removeFillers"
+        @update:model-value="updateRemoveFillers($event)"
+      />
+    </SettingsRow>
+
+    <SettingsRow
+      label="Live preview while recording"
+      helper="Show partial captions in the overlay as you dictate (extra CPU load; final transcript on stop is unaffected)"
     >
-      <div class="flex flex-col min-w-0 mr-3">
-        <span class="text-[12px] font-semibold text-ink"> Live preview while recording </span>
-        <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-          Show partial captions in the overlay as you dictate (extra CPU load; final transcript on
-          stop is unaffected)
-        </span>
-      </div>
-      <button
-        class="toggle-switch flex-shrink-0"
-        :class="settings?.streamingPreview ? 'toggle-on' : 'toggle-off'"
-        @click="updateStreamingPreview(!settings?.streamingPreview)"
-      >
-        <div class="toggle-thumb" />
-      </button>
-    </div>
+      <BaseToggle
+        :model-value="!!settings?.streamingPreview"
+        @update:model-value="updateStreamingPreview($event)"
+      />
+    </SettingsRow>
 
-    <!-- Self-correction cleanup -->
-    <div
-      class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge mt-2"
+    <SettingsRow
+      label="Self-correction cleanup"
+      helper='Detect and remove corrections like "no wait" or restated phrases'
     >
-      <div class="flex flex-col min-w-0 mr-3">
-        <span class="text-[12px] font-semibold text-ink"> Self-correction cleanup </span>
-        <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-          Detect and remove corrections like "no wait" or restated phrases
-        </span>
-      </div>
-      <button
-        class="toggle-switch flex-shrink-0"
-        :class="settings?.selfCorrection ? 'toggle-on' : 'toggle-off'"
-        @click="updateSelfCorrection(!settings?.selfCorrection)"
-      >
-        <div class="toggle-thumb" />
-      </button>
-    </div>
+      <BaseToggle
+        :model-value="!!settings?.selfCorrection"
+        @update:model-value="updateSelfCorrection($event)"
+      />
+    </SettingsRow>
 
-    <!-- Correction model picker (shown when self-correction is enabled) -->
     <template v-if="settings?.selfCorrection">
-      <!-- No model hint -->
-      <div
+      <BaseCard
         v-if="downloadedCorrectionModels.length === 0 && !downloadingCorrection"
-        class="mt-2 p-2.5 rounded-lg bg-gold/[0.06] border border-gold/15"
+        tone="gold"
+        class="mt-2"
       >
         <span class="text-[10px] text-gold leading-snug">
           Download a correction model below to enable self-correction cleanup.
         </span>
-      </div>
+      </BaseCard>
 
-      <!-- Active correction model -->
-      <div
+      <BaseCard
         v-if="downloadedCorrectionModels.some((m) => isCorrectionActive(m))"
-        class="mt-2 p-2.5 rounded-lg bg-gold/[0.04] border border-gold/20"
+        tone="gold"
+        class="mt-2"
       >
         <div class="flex items-center gap-2">
           <div class="w-1.5 h-1.5 rounded-full bg-leaf shadow-[0_0_4px_rgba(95,183,96,0.5)]" />
@@ -266,16 +231,17 @@ onUnmounted(() => {
             }}
           </span>
         </div>
-      </div>
+      </BaseCard>
 
-      <!-- Downloaded correction models -->
       <div v-if="downloadedCorrectionModels.length > 0" class="mt-2">
-        <span class="subsection-label">Correction models</span>
+        <span class="text-[10px] font-semibold text-ink-faint tracking-[0.02em]">
+          Correction models
+        </span>
         <div class="flex flex-col gap-1.5 mt-1.5">
           <div
             v-for="model in downloadedCorrectionModels"
             :key="model.id"
-            class="model-row group"
+            class="group flex items-center gap-2 px-2.5 py-2 rounded-lg border transition-all duration-150"
             :class="{
               'bg-gold/[0.03] border-gold/15': isCorrectionActive(model),
               'bg-panel border-edge hover:border-edge-strong hover:bg-raised':
@@ -342,10 +308,9 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Correction download progress -->
       <div v-if="downloadingCorrection" class="mt-2">
         <div class="flex items-center justify-between mb-1.5">
-          <span class="text-[11px] text-ink-muted font-medium"> Downloading… </span>
+          <span class="text-[11px] text-ink-muted font-medium">Downloading…</span>
           <div class="flex items-center gap-2">
             <span class="text-[11px] text-ink-faint tabular-nums">
               {{ correctionDownloadProgress.toFixed(0) }}%
@@ -381,14 +346,15 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Available correction models to download -->
       <div v-if="availableCorrectionModels.length > 0" class="mt-2">
-        <span class="subsection-label">Available to download</span>
+        <span class="text-[10px] font-semibold text-ink-faint tracking-[0.02em]">
+          Available to download
+        </span>
         <div class="flex flex-col gap-1.5 mt-1.5">
           <div
             v-for="model in availableCorrectionModels"
             :key="model.id"
-            class="model-row bg-panel border-edge"
+            class="flex items-center gap-2 px-2.5 py-2 rounded-lg border bg-panel border-edge transition-all duration-150"
           >
             <div class="flex-1 flex flex-col min-w-0">
               <span class="text-[12px] font-semibold text-ink-muted truncate">
@@ -399,7 +365,9 @@ onUnmounted(() => {
                   {{ formatBytes(model.sizeBytes) }}
                 </span>
                 <div class="flex items-center gap-1">
-                  <span class="rating-label">Spd</span>
+                  <span class="text-[8px] uppercase tracking-[0.06em] font-semibold text-ink-faint">
+                    Spd
+                  </span>
                   <div class="flex gap-[2px]">
                     <span
                       v-for="i in 5"
@@ -410,7 +378,9 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div class="flex items-center gap-1">
-                  <span class="rating-label">Qual</span>
+                  <span class="text-[8px] uppercase tracking-[0.06em] font-semibold text-ink-faint">
+                    Qual
+                  </span>
                   <div class="flex gap-[2px]">
                     <span
                       v-for="i in 5"
@@ -447,13 +417,9 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Correction model error -->
-      <div
-        v-if="correctionModelError"
-        class="mt-2 p-2 rounded-md bg-flame/10 border border-flame/20"
-      >
+      <BaseCard v-if="correctionModelError" tone="flame" padding="sm" class="mt-2">
         <span class="text-[11px] text-flame">{{ correctionModelError }}</span>
-      </div>
+      </BaseCard>
     </template>
-  </section>
+  </SettingsSection>
 </template>
