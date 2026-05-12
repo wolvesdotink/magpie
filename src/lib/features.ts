@@ -14,7 +14,6 @@ export interface FeatureFlags {
   batchTranscription: boolean;
   transcriptionHistory: boolean;
   vocabularyExport: boolean;
-  proTier: boolean;
 }
 
 /** Safe-by-default fallback used before the backend responds. */
@@ -24,5 +23,4 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   batchTranscription: false,
   transcriptionHistory: false,
   vocabularyExport: false,
-  proTier: false,
 };

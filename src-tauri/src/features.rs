@@ -51,10 +51,6 @@ pub struct FeatureFlags {
     /// Phase 3 — "Export vocabulary…" menu entry to save the learned
     /// corrections list as a JSON file. Off until the export UI is built.
     pub vocabulary_export: bool,
-
-    /// Future — commercial paid tier (license-gated features). Off until
-    /// there's anything actually gated.
-    pub pro_tier: bool,
 }
 
 impl Default for FeatureFlags {
@@ -68,7 +64,6 @@ impl Default for FeatureFlags {
             batch_transcription: false,
             transcription_history: false,
             vocabulary_export: false,
-            pro_tier: false,
         }
     }
 }
@@ -94,7 +89,6 @@ impl FeatureFlags {
         env_override("BATCH_TRANSCRIPTION", &mut self.batch_transcription);
         env_override("TRANSCRIPTION_HISTORY", &mut self.transcription_history);
         env_override("VOCABULARY_EXPORT", &mut self.vocabulary_export);
-        env_override("PRO_TIER", &mut self.pro_tier);
     }
 }
 
@@ -156,7 +150,6 @@ mod tests {
         assert!(!f.batch_transcription);
         assert!(!f.transcription_history);
         assert!(!f.vocabulary_export);
-        assert!(!f.pro_tier);
     }
 
     #[test]
@@ -193,10 +186,16 @@ mod tests {
 
     #[test]
     fn env_override_ignores_garbage_and_warns() {
-        with_env(&[("MAGPIE_FEATURE_PRO_TIER", Some("maybe"))], || {
-            let f = FeatureFlags::resolve(&UserSettings::default());
-            assert!(!f.pro_tier, "garbage value leaves the flag at its default");
-        });
+        with_env(
+            &[("MAGPIE_FEATURE_VOCABULARY_EXPORT", Some("maybe"))],
+            || {
+                let f = FeatureFlags::resolve(&UserSettings::default());
+                assert!(
+                    !f.vocabulary_export,
+                    "garbage value leaves the flag at its default"
+                );
+            },
+        );
     }
 
     #[test]
@@ -208,6 +207,6 @@ mod tests {
         let s = serde_json::to_string(&f).unwrap();
         assert!(s.contains("\"fileImport\":true"));
         assert!(s.contains("\"streamingPreview\":false"));
-        assert!(s.contains("\"proTier\":false"));
+        assert!(s.contains("\"vocabularyExport\":false"));
     }
 }

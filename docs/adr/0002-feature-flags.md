@@ -7,10 +7,10 @@
 ## Context
 
 Phase 3 introduces several features (batch / file-import transcription,
-vocabulary export, persistent history, eventual paid tier) that should
-land in the codebase ahead of their public ship. Local-first products
-can't A/B test against remote config; we need a way to merge unfinished
-features without exposing them to all users.
+vocabulary export, persistent history) that should land in the codebase
+ahead of their public ship. Local-first products can't A/B test against
+remote config; we need a way to merge unfinished features without
+exposing them to all users.
 
 We also want a cheap way to flip an experimental code path on for
 development without rebuilding (`MAGPIE_FEATURE_*=1 bun tauri dev`).
