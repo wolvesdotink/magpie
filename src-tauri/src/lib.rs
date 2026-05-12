@@ -11,7 +11,6 @@ mod constants;
 mod correction;
 mod correction_detector;
 mod events;
-mod features;
 mod hotkey;
 #[cfg(target_os = "macos")]
 mod launch_at_login;
@@ -131,7 +130,6 @@ pub fn run() {
             commands::repair_active_model,
             commands::get_launch_at_login_status,
             commands::open_login_items_settings,
-            commands::get_feature_flags,
         ])
         .on_window_event(window_event_handler)
         .setup(|app| {

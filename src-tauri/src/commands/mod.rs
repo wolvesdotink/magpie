@@ -12,7 +12,6 @@
 
 pub mod app;
 pub mod correction_models;
-pub mod features;
 pub mod hotkey;
 pub mod models;
 pub mod permissions;
@@ -22,7 +21,6 @@ pub mod vocabulary;
 
 pub use app::*;
 pub use correction_models::*;
-pub use features::*;
 pub use hotkey::*;
 pub use models::*;
 pub use permissions::*;
