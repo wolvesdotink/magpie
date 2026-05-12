@@ -1,5 +1,6 @@
 mod accessibility;
 mod audio;
+mod command_error;
 mod commands;
 mod constants;
 mod correction;

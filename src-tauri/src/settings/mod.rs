@@ -1,3 +1,7 @@
+pub mod error;
+
+pub use error::SettingsError;
+
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
