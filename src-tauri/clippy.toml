@@ -7,3 +7,9 @@ msrv = "1.91"
 # Project conventions:
 # - The `Magpie` brand name is intentional; don't suggest splitting it.
 doc-valid-idents = ["Magpie", "macOS", "iOS", "CoreML", "ANE", "GGML", "ONNX"]
+
+# Allow `.unwrap()` and `.expect()` in test code. Production code is gated by
+# `#![deny(clippy::unwrap_used)]` at the crate root (see lib.rs), but test
+# fixtures using "this must succeed" assertions are idiomatic.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

@@ -1,3 +1,8 @@
+// Phase 1 gate: production code may not call `.unwrap()`. Test code is
+// exempt via `allow-unwrap-in-tests = true` in src-tauri/clippy.toml.
+// To trip this lint deliberately, use `expect("invariant: …")` instead.
+#![deny(clippy::unwrap_used)]
+
 mod accessibility;
 mod audio;
 mod command_error;
