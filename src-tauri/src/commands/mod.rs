@@ -1,3 +1,11 @@
+// Domain-extracted command modules. Each holds the Tauri command handlers
+// for one slice of the app's surface (vocabulary, recording, models, …).
+// `pub use` re-exports them so `commands::name` keeps working from
+// lib.rs's `invoke_handler!` macro and from cross-module callers like
+// tray.rs's `commands::run_repair_active_model`.
+pub mod vocabulary;
+pub use vocabulary::*;
+
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
@@ -19,7 +27,6 @@ use crate::transcription::streaming;
 
 use crate::overlay;
 use crate::tray::{self, TrayState};
-use crate::vocabulary::{VocabularyEntry, VocabularySource};
 
 // ── Recording Controls ──────────────────────────────────────────────
 
@@ -1412,37 +1419,5 @@ fn load_correction_model_internal(
     Ok(())
 }
 
-// ── Vocabulary ────────────────────────────────────────────────────
-
-#[tauri::command]
-pub fn get_vocabulary(state: State<'_, Arc<AppState>>) -> Vec<VocabularyEntry> {
-    lock_or_recover(&state.vocabulary).entries.clone()
-}
-
-#[tauri::command]
-pub fn add_vocabulary_entry(
-    state: State<'_, Arc<AppState>>,
-    wrong: String,
-    correct: String,
-) -> Result<(), String> {
-    let mut vocab = lock_or_recover(&state.vocabulary);
-    vocab.add_or_update(&wrong, &correct, VocabularySource::Manual);
-    vocab.save().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn remove_vocabulary_entry(
-    state: State<'_, Arc<AppState>>,
-    wrong: String,
-) -> Result<(), String> {
-    let mut vocab = lock_or_recover(&state.vocabulary);
-    vocab.remove(&wrong);
-    vocab.save().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn clear_vocabulary(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    let mut vocab = lock_or_recover(&state.vocabulary);
-    vocab.entries.clear();
-    vocab.save().map_err(|e| e.to_string())
-}
+// Vocabulary commands have been extracted to commands/vocabulary.rs.
+// They are re-exported below.
