@@ -15,10 +15,11 @@ fn default_true() -> bool {
 }
 
 /// Activation mode for triggering dictation
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum ActivationMode {
     /// Hold Fn key to record, release to transcribe
+    #[default]
     HoldFn,
     /// Single-tap Fn key to toggle recording (fires on every Fn press,
     /// including macOS Fn-modifier shortcuts like Fn+F1)
@@ -28,12 +29,6 @@ pub enum ActivationMode {
     /// Use a global keyboard shortcut (user-configurable; defaults to
     /// Cmd+Shift+Space)
     Shortcut,
-}
-
-impl Default for ActivationMode {
-    fn default() -> Self {
-        Self::HoldFn
-    }
 }
 
 /// Persisted user settings
@@ -177,6 +172,12 @@ impl UserSettings {
     /// A *corrupt* file (parse failure or migration error) is logged and
     /// replaced with defaults rather than propagated, so a bad upgrade
     /// can't permanently lock the user out of the app.
+    ///
+    /// A *future-version* file (older build trying to read newer settings)
+    /// is renamed to `settings.future-backup.json` BEFORE we fall back to
+    /// defaults — otherwise the next `save()` would overwrite the user's
+    /// future-version data with v1 defaults. The backup is non-destructive
+    /// so a downgrade-then-upgrade cycle preserves the original state.
     pub fn load() -> Self {
         let path = match settings_path() {
             Ok(p) => p,
@@ -202,6 +203,23 @@ impl UserSettings {
             Ok(settings) => {
                 log::info!("Loaded settings from {}", path.display());
                 settings
+            }
+            Err(SettingsError::VersionTooNew { found, supported }) => {
+                let backup = path.with_file_name("settings.future-backup.json");
+                match std::fs::rename(&path, &backup) {
+                    Ok(()) => log::error!(
+                        "Settings file is from a newer version (v{found}, this build supports up to v{supported}). \
+                         Backed up to {} and falling back to defaults so we don't overwrite your data.",
+                        backup.display()
+                    ),
+                    Err(io_err) => log::error!(
+                        "Settings file is from a newer version (v{found}, this build supports up to v{supported}). \
+                         Failed to back up to {}: {io_err}. Falling back to defaults; the original file will be \
+                         overwritten on the next save unless you move it manually.",
+                        backup.display()
+                    ),
+                }
+                Self::default()
             }
             Err(e) => {
                 log::warn!("Settings file unusable ({}); using defaults", e);
