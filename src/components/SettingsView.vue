@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import UpdatesSection from '@/components/UpdatesSection.vue';
 import ActivationSection from '@/components/settings/ActivationSection.vue';
 import GeneralSection from '@/components/settings/GeneralSection.vue';
@@ -152,6 +153,30 @@ function jumpToSection(id: SectionId) {
   activeSectionId.value = id;
   searchQuery.value = '';
 }
+
+// Tray "Check for Updates…" also jumps us to the Updates tab so the
+// concurrent check kicked off by `useUpdater` is visible. `useUpdater`
+// listens for the same event independently to run `checkNow()`.
+let unlistenCheckUpdates: UnlistenFn | null = null;
+
+onMounted(async () => {
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    unlistenCheckUpdates = await listen('menu://check-for-updates', () => {
+      jumpToSection('updates');
+    });
+  } catch (e) {
+    // Outside Tauri runtime (e.g. plain Vite preview) — listening is a no-op.
+    console.debug('[settings] menu listener not registered:', e);
+  }
+});
+
+onUnmounted(() => {
+  if (unlistenCheckUpdates) {
+    unlistenCheckUpdates();
+    unlistenCheckUpdates = null;
+  }
+});
 </script>
 
 <template>

@@ -40,6 +40,39 @@ pub use model_loading::{
 /// Default global shortcut used when the user has not configured a custom one.
 pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Shift+Space";
 
+/// Append a startup-error breadcrumb to `~/Library/Logs/com.magpie.app/setup-panic.log`.
+/// Best-effort: any I/O failure is swallowed because the alternative is
+/// losing the message entirely. Used for failures so early that
+/// `tauri-plugin-log` hasn't initialized its file writer yet — without
+/// this, a Finder-launched app that panics in setup leaves no on-disk trace
+/// because stderr is `/dev/null` for GUI launches.
+#[cfg(target_os = "macos")]
+fn write_startup_breadcrumb(msg: &str) {
+    use std::io::Write;
+
+    let Ok(home) = std::env::var("HOME") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(home).join("Library/Logs/com.magpie.app");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let path = dir.join("setup-panic.log");
+
+    let timestamp = chrono::Local::now().to_rfc3339();
+    let entry = format!("[{timestamp}] {msg}\n");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = f.write_all(entry.as_bytes());
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn write_startup_breadcrumb(_msg: &str) {}
+
 /// Install a `tracing` subscriber for new structured-logging code. Filter
 /// is taken from `MAGPIE_LOG` if set, else `RUST_LOG`, else `info` for the
 /// app crate and `warn` for everything else.
@@ -49,10 +82,14 @@ pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Shift+Space";
 ///     `tauri-plugin-log` (file + console). They do NOT show up here.
 ///   - New code should prefer `tracing::{info,warn,error,instrument}`,
 ///     which prints via this subscriber.
-///   - A future change can call `tracing_log::LogTracer::init()` to
-///     forward `log` records into `tracing`, at which point `tauri-plugin-log`
-///     would be dropped or reconfigured. Doing both is fine; doing it now
-///     would silently mute `tauri-plugin-log`.
+///   - We deliberately use `set_global_default` rather than `try_init` here.
+///     `try_init` would also install `tracing_log::LogTracer` (via the
+///     `tracing-log` default feature on `tracing-subscriber`), which calls
+///     `log::set_logger` — and `tauri-plugin-log` then aborts the whole app
+///     at startup with `PluginInitialization("log", "attempted to set a
+///     logger after the logging system was already initialized")`. Until we
+///     migrate to a single unified pipeline, the two stay independent:
+///     `log` → tauri-plugin-log (file + console), `tracing` → stderr here.
 fn init_tracing() {
     use tracing_subscriber::{fmt, EnvFilter};
 
@@ -60,13 +97,16 @@ fn init_tracing() {
         .or_else(|_| EnvFilter::try_from_default_env())
         .unwrap_or_else(|_| EnvFilter::new("magpie_lib=info,warn"));
 
-    // try_init so a second `run()` call (e.g. tests, or hot-reload) does not
-    // panic on "global default subscriber already set".
-    let _ = fmt::Subscriber::builder()
+    let subscriber = fmt::Subscriber::builder()
         .with_env_filter(filter)
         .with_target(true)
         .with_writer(std::io::stderr)
-        .try_init();
+        .finish();
+
+    // Ignore the error: a second `run()` call (tests, hot-reload) just keeps
+    // the existing subscriber. Crucially, this does NOT install LogTracer,
+    // so `tauri-plugin-log` is still free to set itself as the `log` global.
+    let _ = tracing::subscriber::set_global_default(subscriber);
 }
 
 pub fn run() {
@@ -80,48 +120,27 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init());
 
-    // Updater + process are desktop-only. The frontend invokes these through
-    // @tauri-apps/plugin-updater and @tauri-apps/plugin-process; we only need
-    // to register them on the Rust side here. Updates are signed/verified
-    // against the public key in tauri.conf.json (plugins.updater.pubkey) and
-    // fetched from the endpoint picked here based on the user's channel.
+    // Updater + process are desktop-only. The frontend invokes update
+    // operations via our own `magpie_updater_*` commands (NOT
+    // `@tauri-apps/plugin-updater`'s JS API), because the channel choice —
+    // stable vs. beta — happens in Rust per call. The plugin's global
+    // Builder does not accept endpoints (only tauri.conf.json does), but
+    // the per-call `UpdaterBuilder` reached through
+    // `UpdaterExt::updater_builder()` does. Our commands always call
+    // `.endpoints(...)` based on `UserSettings.update_channel`, so the
+    // value in tauri.conf.json is just a fallback that's never read.
     //
-    // We read UserSettings off disk to decide between the stable and beta
-    // endpoints — AppState isn't `manage`d yet at this point in the
-    // builder. `UserSettings::load()` is cheap (JSON parse, file-cached by
-    // the OS) and AppState::new() will read the same file again moments
-    // later; the duplicate read isn't worth optimizing away.
-    //
-    // Toggling the channel in Settings requires an app relaunch because
-    // the Tauri JS plugin's check() does not accept an endpoints override
-    // (CheckOptions only exposes headers/timeout/proxy/target/allowDowngrades).
+    // The plugin still has to be registered: its setup owns the pubkey
+    // used to verify the .tar.gz signature, and `updater_builder()` reads
+    // the plugin's `UpdaterState` for that pubkey.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        use crate::settings::{UpdateChannel, UserSettings};
-
-        let endpoint_url = match UserSettings::load().update_channel {
-            UpdateChannel::Beta => {
-                "https://github.com/wolvesdotink/magpie/releases/download/beta-channel/latest.json"
-            }
-            UpdateChannel::Stable => {
-                "https://github.com/wolvesdotink/magpie/releases/latest/download/latest.json"
-            }
-        };
-        let endpoint: tauri::Url = endpoint_url
-            .parse()
-            .expect("hardcoded updater endpoint URL is valid");
-
         builder = builder
-            .plugin(
-                tauri_plugin_updater::Builder::new()
-                    .endpoints(vec![endpoint])
-                    .expect("setting hardcoded updater endpoint cannot fail")
-                    .build(),
-            )
+            .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init());
     }
 
-    builder
+    let run_result = builder
         .manage(Arc::new(AppState::new()))
         .invoke_handler(tauri::generate_handler![
             commands::start_recording,
@@ -159,6 +178,10 @@ pub fn run() {
             commands::repair_active_model,
             commands::get_launch_at_login_status,
             commands::open_login_items_settings,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            commands::magpie_updater_check,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            commands::magpie_updater_install,
         ])
         .on_window_event(window_event_handler)
         .setup(|app| {
@@ -179,12 +202,30 @@ pub fn run() {
                         .unwrap_or_else(|| "unknown panic".to_string());
                     let err_msg = format!("Panic during app setup: {}", msg);
                     eprintln!("{}", err_msg);
+                    write_startup_breadcrumb(&err_msg);
                     Err(err_msg.into())
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("Error while running Magpie");
+        .run(tauri::generate_context!());
+
+    match run_result {
+        Ok(()) => {}
+        Err(e) => {
+            // `tauri::Error` from `.run()` covers failures the builder itself
+            // raises (plugin init, context generation, runtime crashes). The
+            // setup-closure panic path above is separate. We log to the
+            // breadcrumb file before propagating because tauri-plugin-log's
+            // file writer may never have flushed if the failure was during
+            // plugin init.
+            let err_msg = format!("Error while running Magpie: {e}");
+            eprintln!("{err_msg}");
+            write_startup_breadcrumb(&err_msg);
+            // Preserve the previous abort-on-failure behavior: this is a
+            // fatal startup error and there is no meaningful fallback.
+            panic!("{err_msg}");
+        }
+    }
 }
 
 /// Window-event handler: hides the main popover on focus-loss (unless

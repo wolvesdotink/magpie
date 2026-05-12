@@ -17,6 +17,8 @@ pub mod models;
 pub mod permissions;
 pub mod recording;
 pub mod settings;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod updater;
 pub mod vocabulary;
 
 pub use app::*;
@@ -26,4 +28,6 @@ pub use models::*;
 pub use permissions::*;
 pub use recording::*;
 pub use settings::*;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub use updater::*;
 pub use vocabulary::*;

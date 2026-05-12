@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 
 const {
@@ -10,20 +9,9 @@ const {
   updateUpdateChannel,
 } = useSettings();
 
-// Set to true once the user toggles the channel; the live updater plugin
-// keeps using whichever endpoint was registered at startup, so we surface a
-// restart prompt rather than silently apply on the next manual check.
-const channelNeedsRestart = ref(false);
-
 async function toggleBetaChannel() {
   const next = settings.value?.updateChannel === 'beta' ? 'stable' : 'beta';
   await updateUpdateChannel(next);
-  channelNeedsRestart.value = true;
-}
-
-async function restartNow() {
-  const { relaunch } = await import('@tauri-apps/plugin-process');
-  await relaunch();
 }
 </script>
 
@@ -88,15 +76,6 @@ async function restartNow() {
         @click="toggleBetaChannel()"
       >
         <div class="toggle-thumb" />
-      </button>
-    </div>
-    <div
-      v-if="channelNeedsRestart"
-      class="flex items-center justify-between mt-1.5 px-1 text-[10px] text-amber-400"
-    >
-      <span>Restart Magpie to apply the new update channel.</span>
-      <button class="ml-2 underline hover:text-amber-300 cursor-pointer" @click="restartNow()">
-        Restart now
       </button>
     </div>
   </section>

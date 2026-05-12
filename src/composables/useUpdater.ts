@@ -1,32 +1,35 @@
 /**
- * useUpdater — Tauri auto-update state machine for Vue 3.
+ * useUpdater — channel-aware in-app updater state machine for Vue 3.
+ *
+ * Talks to our Rust-side `magpie_updater_*` commands (NOT the
+ * `@tauri-apps/plugin-updater` JS API), because the channel choice —
+ * stable vs. beta — has to happen in Rust per call: the plugin's global
+ * Builder doesn't accept endpoints, only `tauri.conf.json` does. Our
+ * commands always call `app.updater_builder().endpoints(...)` with the
+ * URL matching the user's `UserSettings.update_channel`.
  *
  * Lifecycle:
  *   idle → checking → available → downloading → ready
  *                  ↘ idle (no update)        ↘ error (any failure)
  *
- * The composable also listens for `menu://check-for-updates` from the tray
- * menu so a user clicking "Check for Updates…" triggers `checkNow()`.
+ * Listens for `menu://check-for-updates` from the tray menu so a user
+ * clicking "Check for Updates…" triggers `checkNow()`.
  *
  * Dev-mode behavior:
- *   The updater plugin needs a signed bundle with a valid pubkey to do
- *   anything. In `bun tauri dev` and in plain Vite previews, every call
- *   throws (or the pubkey placeholder fails to parse). We catch those
- *   throws and stay in `idle`/`error` silently — there's nothing useful
- *   the user can do about it.
- *
- * The endpoint, public key, and version checks are all configured in
- * src-tauri/tauri.conf.json under `plugins.updater`. This composable does
- * NOT know the URL — that's baked into the binary at build time.
+ *   The Rust commands need a real signed bundle + valid pubkey to do
+ *   anything useful. In `bun tauri dev` and plain Vite previews every
+ *   call errors; we surface that as `status: 'error'` rather than
+ *   crashing.
  */
 import { onMounted, onUnmounted, ref } from 'vue';
 import type { UnlistenFn } from '@tauri-apps/api/event';
+import { magpieUpdaterCheck, magpieUpdaterInstall } from '@/lib/commands';
 
 type UpdaterStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
 
 export type UpdaterState = {
   status: UpdaterStatus;
-  /** Version string of the available/installed update (e.g. "0.2.0"). */
+  /** Version string of the available/installed update (e.g. "0.2.0" or "0.2.0-beta.3"). */
   newVersion: string | null;
   /** Release notes / changelog markdown, if the manifest provided one. */
   notes: string | null;
@@ -50,6 +53,11 @@ const initialState: UpdaterState = {
 /** Wait this long after mount before the first silent check (ms). */
 const BOOT_QUIET_MS = 4000;
 
+type ProgressEvent = {
+  chunkLength: number;
+  contentLength: number | null;
+};
+
 type UseUpdaterOptions = {
   /** Run a silent check shortly after mount. Default true. */
   bootCheck?: boolean;
@@ -63,50 +71,40 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
   const state = ref<UpdaterState>({ ...initialState });
   const dismissed = ref(false);
 
-  /** Holds the Update handle returned by `check()` so install/restart can use it. */
-  let updateHandle: Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>> | null =
-    null;
-
   let bootTimer: number | null = null;
   let unlistenMenu: UnlistenFn | null = null;
+  let unlistenProgress: UnlistenFn | null = null;
+  let unlistenFinish: UnlistenFn | null = null;
 
   async function checkNow(): Promise<void> {
     dismissed.value = false;
     state.value = { ...state.value, status: 'checking', error: null };
     try {
-      // Lazy import — keeps the module out of the dev/browser bundle path
-      // on first paint and lets the catch below cover the "plugin not
-      // present" case cleanly.
-      const { check } = await import('@tauri-apps/plugin-updater');
-      const update = await check();
-      if (!update) {
-        updateHandle = null;
+      const result = await magpieUpdaterCheck();
+      if (!result) {
         state.value = { ...initialState, status: 'idle' };
         return;
       }
-      updateHandle = update;
       state.value = {
         status: 'available',
-        newVersion: update.version ?? null,
-        notes: update.body ?? null,
+        newVersion: result.version,
+        notes: result.body,
         downloaded: 0,
         totalBytes: 0,
         error: null,
       };
     } catch (e) {
       // Most common reason in production: no network. Most common in dev:
-      // plugin not active or pubkey not yet generated.
-      updateHandle = null;
+      // signed bundle / pubkey not present.
       state.value = {
         ...initialState,
         status: 'error',
-        error: (e as Error).message ?? String(e),
+        error: e instanceof Error ? e.message : String(e),
       };
     }
   }
 
   async function install(): Promise<void> {
-    if (!updateHandle) return;
     state.value = {
       ...state.value,
       status: 'downloading',
@@ -114,36 +112,45 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
       totalBytes: 0,
     };
     try {
-      await updateHandle.downloadAndInstall((event) => {
-        // The plugin emits one of three event shapes per the Tauri 2 docs:
-        //   { event: "Started",  data: { contentLength } }
-        //   { event: "Progress", data: { chunkLength    } }
-        //   { event: "Finished" }
-        //
-        // We deliberately do NOT transition to "ready" on "Finished".
-        // Finished fires the moment the byte stream ends — BEFORE signature
-        // verification and BEFORE the install step that extracts the .tar.gz
-        // and replaces the running .app bundle. Either of those can fail; we
-        // use the promise resolution below as the single source of truth.
-        if (event.event === 'Started') {
-          const total = (event.data as { contentLength?: number }).contentLength ?? 0;
-          state.value = { ...state.value, totalBytes: total };
-        } else if (event.event === 'Progress') {
-          const chunk = (event.data as { chunkLength?: number }).chunkLength ?? 0;
-          state.value = {
-            ...state.value,
-            downloaded: state.value.downloaded + chunk,
-          };
-        }
+      const { listen } = await import('@tauri-apps/api/event');
+      // Subscribe to progress + finish events for the duration of this
+      // install. The Rust `magpie_updater_install` command emits per-chunk
+      // progress and a single `finished` event when the byte stream ends
+      // (before signature verification + extract — see useUpdater notes
+      // below; we don't transition to 'ready' on 'finished' for that
+      // reason).
+      unlistenProgress = await listen<ProgressEvent>('magpie://updater-progress', ({ payload }) => {
+        const chunk = payload.chunkLength ?? 0;
+        const total = payload.contentLength ?? 0;
+        state.value = {
+          ...state.value,
+          downloaded: state.value.downloaded + chunk,
+          // First progress event carries the total; preserve any
+          // previously-known total if a later event reports null.
+          totalBytes: total > 0 ? total : state.value.totalBytes,
+        };
       });
+      unlistenFinish = await listen('magpie://updater-finished', () => {
+        // No state transition here: 'finished' fires the moment the byte
+        // stream ends, BEFORE signature verification + extract. We use the
+        // command promise's resolution as the single source of truth for
+        // success vs. failure.
+      });
+
+      await magpieUpdaterInstall();
       state.value = { ...state.value, status: 'ready' };
     } catch (e) {
       console.error('[updater] install failed:', e);
       state.value = {
         ...state.value,
         status: 'error',
-        error: (e as Error).message ?? String(e),
+        error: e instanceof Error ? e.message : String(e),
       };
+    } finally {
+      unlistenProgress?.();
+      unlistenProgress = null;
+      unlistenFinish?.();
+      unlistenFinish = null;
     }
   }
 
@@ -155,7 +162,7 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
       state.value = {
         ...state.value,
         status: 'error',
-        error: (e as Error).message ?? String(e),
+        error: e instanceof Error ? e.message : String(e),
       };
     }
   }
@@ -193,6 +200,10 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
       unlistenMenu();
       unlistenMenu = null;
     }
+    unlistenProgress?.();
+    unlistenProgress = null;
+    unlistenFinish?.();
+    unlistenFinish = null;
   });
 
   return {

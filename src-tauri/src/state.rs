@@ -119,6 +119,13 @@ pub struct AppState {
     /// `cancel_download` command flips the token's flag, which the streaming
     /// loop in `downloader::download_model` checks each chunk.
     pub active_downloads: Mutex<HashMap<String, CancellationToken>>,
+    /// Cached `Update` returned by the most recent `magpie_updater_check`.
+    /// `magpie_updater_install` `.take()`s it before calling
+    /// `download_and_install`. Cleared on a check that finds no update.
+    /// Desktop-only because `tauri_plugin_updater` is not built on
+    /// android/ios (see `src-tauri/Cargo.toml`'s target-cfg dependency).
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
 }
 
 // `cpal::Stream` contains C function pointers (FnMut callbacks) that are
@@ -154,6 +161,8 @@ impl AppState {
             current_shortcut: Mutex::new(None),
             pending_reload: Mutex::new(None),
             active_downloads: Mutex::new(HashMap::new()),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            pending_update: Mutex::new(None),
         }
     }
 

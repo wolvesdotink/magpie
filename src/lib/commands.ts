@@ -68,8 +68,8 @@ export interface UserSettings {
    *  `null` = use the built-in default ("CmdOrCtrl+Shift+Space"). */
   customShortcut: string | null;
   /** Which update channel the in-app updater polls. Default 'stable'.
-   *  Changes take effect on the next app launch (the updater plugin's
-   *  endpoint is set in Rust at startup and cannot be swapped live). */
+   *  Read in Rust at every update check, so the toggle takes effect on
+   *  the next check — no app relaunch required. */
   updateChannel: 'stable' | 'beta';
 }
 
@@ -165,6 +165,24 @@ export const getLaunchAtLoginStatus = () =>
   invoke<LaunchAtLoginStatus>('get_launch_at_login_status');
 
 export const openLoginItemsSettings = () => invoke<void>('open_login_items_settings');
+
+// ── Updater (channel-aware) ───────────────────────────────────────
+
+/** Metadata returned by `magpie_updater_check` when an update is available. */
+export interface UpdaterCheckResult {
+  /** Version advertised by the channel manifest (e.g. "0.2.0" or "0.2.0-beta.3"). */
+  version: string;
+  /** Version baked into the running binary at build time. */
+  currentVersion: string;
+  /** Release notes / changelog from the manifest, if any. */
+  body: string | null;
+  /** ISO-8601 publish date from the manifest, if any. */
+  date: string | null;
+}
+
+export const magpieUpdaterCheck = () => invoke<UpdaterCheckResult | null>('magpie_updater_check');
+
+export const magpieUpdaterInstall = () => invoke<void>('magpie_updater_install');
 
 // ── Vocabulary ────────────────────────────────────────────────────
 
