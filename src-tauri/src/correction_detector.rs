@@ -13,7 +13,7 @@ use tauri::AppHandle;
 
 use crate::accessibility;
 use crate::events::{self, event_names, VocabularyLearnedPayload};
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 use crate::vocabulary::VocabularySource;
 
 /// How long to wait after paste before taking the first snapshot (ms).
@@ -128,7 +128,7 @@ fn run_detection(pasted_text: &str, state: &Arc<AppState>, app: &AppHandle) -> R
     }
 
     // Store corrections in vocabulary
-    let mut vocab = state.vocabulary.lock().unwrap();
+    let mut vocab = lock_or_recover(&state.vocabulary);
     for (wrong, correct) in &corrections {
         vocab.add_or_update(wrong, correct, VocabularySource::Auto);
         events::emit_event(

@@ -8,7 +8,7 @@ use tauri::{
 };
 
 use crate::models::{registry, storage};
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 use crate::transcription::backend::TranscriptionBackend;
 use crate::transcription::whisper_backend::WhisperBackend;
 
@@ -203,15 +203,15 @@ fn handle_model_selection(app: &AppHandle, model_id: &str) {
     match WhisperBackend::load(&path) {
         Ok(backend) => {
             {
-                let mut slot = state.backend.lock().unwrap();
+                let mut slot = lock_or_recover(&state.backend);
                 *slot = Some(Arc::new(backend) as Arc<dyn TranscriptionBackend>);
             }
             {
-                let mut model_path = state.current_model_path.lock().unwrap();
+                let mut model_path = lock_or_recover(&state.current_model_path);
                 *model_path = Some(path);
             }
             {
-                let mut settings = state.settings.lock().unwrap();
+                let mut settings = lock_or_recover(&state.settings);
                 settings.selected_model = Some(model_id.to_string());
                 if let Err(e) = settings.save() {
                     log::error!("Failed to save settings: {}", e);

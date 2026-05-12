@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
 
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 
 /// Start recording from the default input device.
 /// Returns the cpal Stream handle (drop it to stop recording) and the device sample rate.
@@ -32,13 +32,13 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
 
     // Clear existing buffer
     {
-        let mut buffer = state.audio_buffer.lock().unwrap();
+        let mut buffer = lock_or_recover(&state.audio_buffer);
         buffer.clear();
     }
 
     // Store the sample rate for resampling later
     {
-        let mut sr = state.capture_sample_rate.lock().unwrap();
+        let mut sr = lock_or_recover(&state.capture_sample_rate);
         *sr = sample_rate;
     }
 
@@ -58,7 +58,7 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
                 let sum_sq: f32 = mono.iter().map(|&s| s * s).sum();
                 let rms = (sum_sq / mono.len().max(1) as f32).sqrt();
                 state_clone.set_amplitude(rms);
-                let mut buffer = state_clone.audio_buffer.lock().unwrap();
+                let mut buffer = lock_or_recover(&state_clone.audio_buffer);
                 buffer.extend_from_slice(&mono);
             },
             err_fn,
@@ -75,7 +75,7 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
                     let sum_sq: f32 = mono.iter().map(|&s| s * s).sum();
                     let rms = (sum_sq / mono.len().max(1) as f32).sqrt();
                     state_clone2.set_amplitude(rms);
-                    let mut buffer = state_clone2.audio_buffer.lock().unwrap();
+                    let mut buffer = lock_or_recover(&state_clone2.audio_buffer);
                     buffer.extend_from_slice(&mono);
                 },
                 err_fn,
@@ -95,7 +95,7 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
                     let sum_sq: f32 = mono.iter().map(|&s| s * s).sum();
                     let rms = (sum_sq / mono.len().max(1) as f32).sqrt();
                     state_clone2.set_amplitude(rms);
-                    let mut buffer = state_clone2.audio_buffer.lock().unwrap();
+                    let mut buffer = lock_or_recover(&state_clone2.audio_buffer);
                     buffer.extend_from_slice(&mono);
                 },
                 err_fn,

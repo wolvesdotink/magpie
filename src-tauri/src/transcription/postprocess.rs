@@ -45,7 +45,8 @@ fn remove_filler_words(text: &str, fillers: &[String]) -> String {
 
 /// Normalize multiple spaces and trim
 fn normalize_whitespace(text: &str) -> String {
-    let re = Regex::new(r"\s+").unwrap();
+    // Invariant: the literal `\s+` is a valid regex; this can never fail.
+    let re = Regex::new(r"\s+").expect("invariant: literal whitespace regex compiles");
     re.replace_all(text.trim(), " ").to_string()
 }
 
