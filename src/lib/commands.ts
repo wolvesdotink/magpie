@@ -83,6 +83,7 @@ export interface VocabularyEntry {
 export const startRecording = () => invoke("start_recording");
 export const stopRecording = () => invoke("stop_recording");
 export const toggleRecording = () => invoke("toggle_recording");
+export const cancelRecording = () => invoke("cancel_recording");
 
 // ── App State ──────────────────────────────────────────────────────
 

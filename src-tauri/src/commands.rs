@@ -113,6 +113,15 @@ pub async fn start_recording(
     }
 
     log::info!("Recording started at {} Hz", sample_rate);
+
+    // Bind Escape as a global cancel shortcut for the lifetime of this
+    // recording. Torn down in stop_recording / cancel_recording. Best-effort:
+    // a failure here (e.g. user's custom shortcut is also Escape) is logged
+    // but does not block the recording from continuing.
+    if let Err(e) = register_escape_shortcut(&app) {
+        log::warn!("Could not register Escape cancel shortcut: {}", e);
+    }
+
     Ok(())
 }
 
@@ -152,6 +161,11 @@ pub async fn stop_recording(
     state.set_processing(true);
     tray::set_tray_icon(&app, TrayState::Processing);
     tray::set_tray_status(&app, "Magpie — Transcribing...");
+
+    // Escape only cancels during the recording phase. Once we cross into
+    // transcription, release the binding so the key behaves normally again.
+    unregister_escape_shortcut(&app);
+
     events::emit_event(&app, event_names::RECORDING_STOPPED, ());
     events::emit_event(&app, event_names::TRANSCRIPTION_STARTED, ());
 
@@ -402,6 +416,105 @@ pub async fn toggle_recording(
         stop_recording(app, state).await
     } else {
         start_recording(app, state).await
+    }
+}
+
+/// Discard the current recording without transcribing. Bound to Escape via a
+/// global shortcut registered in `start_recording`. The captured audio is
+/// dropped, the streaming worker is torn down, and the app returns to idle —
+/// no `transcription-started` event, no paste.
+#[tauri::command]
+pub async fn cancel_recording(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    if !state.is_recording() {
+        return Err("Not recording".to_string());
+    }
+
+    // Drop the audio stream — mirrors stop_recording's first step.
+    {
+        let mut active = state.active_stream.lock().unwrap();
+        *active = None;
+    }
+    state.set_recording(false);
+
+    // Tear down the streaming worker. partial_cancel aborts any in-flight
+    // whisper.cpp call; cancel signals the loop to exit. 2s timeout bounds
+    // the wait if a stuck inference somehow ignores the abort.
+    let streaming_handle = state
+        .streaming_handle
+        .lock()
+        .ok()
+        .and_then(|mut g| g.take());
+    if let Some(h) = streaming_handle {
+        h.partial_cancel.cancel();
+        h.cancel.cancel();
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(2000), h.join).await;
+    }
+
+    // Discard the captured audio — the whole point of "cancel" is to make
+    // sure nothing reaches the transcription pipeline.
+    {
+        let mut buffer = state.audio_buffer.lock().unwrap();
+        buffer.clear();
+    }
+
+    // Release the global Escape binding so the key behaves normally again.
+    unregister_escape_shortcut(&app);
+
+    tray::set_tray_icon(&app, TrayState::Idle);
+    tray::set_tray_status(&app, "Magpie — Ready");
+    overlay::hide_overlay(&app);
+    // RECORDING_STOPPED transitions the frontend to idle (no TRANSCRIPTION_STARTED
+    // follows, so `processing` stays false — the overlay/popover both go quiet).
+    events::emit_event(&app, event_names::RECORDING_STOPPED, ());
+
+    log::info!("Recording cancelled by user (Escape)");
+    Ok(())
+}
+
+/// Register Escape as a global shortcut that cancels the current recording.
+/// Called from `start_recording`; torn down in `stop_recording` and
+/// `cancel_recording` so the binding only exists while audio is being
+/// captured. Outside the recording window, Escape passes through to whichever
+/// app has focus.
+fn register_escape_shortcut(app: &AppHandle) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+    let escape_shortcut: Shortcut = "Escape"
+        .parse()
+        .map_err(|e| format!("Failed to parse Escape shortcut: {}", e))?;
+
+    app.global_shortcut()
+        .on_shortcut(escape_shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                let app_clone = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = app_clone.state::<Arc<AppState>>();
+                    if let Err(e) = cancel_recording(app_clone.clone(), state).await {
+                        // "Not recording" is the expected error if the user
+                        // mashes Escape after the recording already ended;
+                        // log at debug so we don't pollute the log on the
+                        // common race.
+                        log::debug!("Escape cancel: {}", e);
+                    }
+                });
+            }
+        })
+        .map_err(|e| format!("Failed to register Escape shortcut: {}", e))?;
+
+    log::debug!("Escape registered as cancel-recording shortcut");
+    Ok(())
+}
+
+/// Idempotent teardown of the Escape cancel-recording shortcut. Silently
+/// no-ops if Escape isn't currently bound.
+fn unregister_escape_shortcut(app: &AppHandle) {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+
+    if let Ok(escape_shortcut) = "Escape".parse::<Shortcut>() {
+        let _ = app.global_shortcut().unregister(escape_shortcut);
     }
 }
 

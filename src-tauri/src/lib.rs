@@ -58,6 +58,7 @@ pub fn run() {
             commands::start_recording,
             commands::stop_recording,
             commands::toggle_recording,
+            commands::cancel_recording,
             commands::get_app_state,
             commands::get_available_models,
             commands::get_downloaded_models,
