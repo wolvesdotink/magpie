@@ -237,3 +237,100 @@ pub fn get_available_models() -> Vec<ModelInfo> {
 pub fn find_model(id: &str) -> Option<ModelInfo> {
     get_available_models().into_iter().find(|m| m.id == id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn ids_are_unique() {
+        let models = get_available_models();
+        let mut seen = HashSet::new();
+        for m in &models {
+            assert!(
+                seen.insert(m.id.clone()),
+                "duplicate model id in registry: {}",
+                m.id
+            );
+        }
+    }
+
+    #[test]
+    fn filenames_are_unique() {
+        let models = get_available_models();
+        let mut seen = HashSet::new();
+        for m in &models {
+            assert!(
+                seen.insert(m.filename.clone()),
+                "duplicate filename in registry: {}",
+                m.filename
+            );
+        }
+    }
+
+    #[test]
+    fn urls_look_like_https() {
+        for m in get_available_models() {
+            assert!(
+                m.url.starts_with("https://"),
+                "model {} has non-https url: {}",
+                m.id,
+                m.url
+            );
+        }
+    }
+
+    #[test]
+    fn encoder_url_and_size_are_co_present() {
+        for m in get_available_models() {
+            assert_eq!(
+                m.encoder_url.is_some(),
+                m.encoder_size_bytes.is_some(),
+                "model {}: encoder_url and encoder_size_bytes must both be Some or both be None",
+                m.id
+            );
+        }
+    }
+
+    #[test]
+    fn ratings_in_valid_range() {
+        for m in get_available_models() {
+            assert!(
+                (1..=5).contains(&m.speed_rating),
+                "model {}: speed_rating must be 1..=5, got {}",
+                m.id,
+                m.speed_rating
+            );
+            assert!(
+                (1..=5).contains(&m.accuracy_rating),
+                "model {}: accuracy_rating must be 1..=5, got {}",
+                m.id,
+                m.accuracy_rating
+            );
+        }
+    }
+
+    #[test]
+    fn find_model_round_trips_every_entry() {
+        for m in get_available_models() {
+            let found =
+                find_model(&m.id).unwrap_or_else(|| panic!("find_model({}) returned None", m.id));
+            assert_eq!(found.filename, m.filename);
+        }
+    }
+
+    #[test]
+    fn find_model_returns_none_for_unknown_id() {
+        assert!(find_model("definitely-not-a-real-model").is_none());
+    }
+
+    #[test]
+    fn registry_has_at_least_one_recommended_model() {
+        let models = get_available_models();
+        assert!(
+            models.iter().any(|m| m.recommended_for.is_some()),
+            "registry should highlight at least one recommended model"
+        );
+    }
+}
