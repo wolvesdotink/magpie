@@ -102,8 +102,7 @@ impl Vocabulary {
     /// Persist current vocabulary to disk.
     pub fn save(&self) -> Result<()> {
         let path = vocabulary_path()?;
-        let json =
-            serde_json::to_string_pretty(self).context("Failed to serialize vocabulary")?;
+        let json = serde_json::to_string_pretty(self).context("Failed to serialize vocabulary")?;
         std::fs::write(&path, json).context("Failed to write vocabulary file")?;
         log::info!(
             "Vocabulary saved to {} ({} entries)",
@@ -142,11 +141,7 @@ impl Vocabulary {
                 created_at: now.clone(),
                 last_used: now,
             });
-            log::info!(
-                "Added vocabulary entry: \"{}\" -> \"{}\"",
-                wrong,
-                correct
-            );
+            log::info!("Added vocabulary entry: \"{}\" -> \"{}\"", wrong, correct);
         }
     }
 
@@ -268,7 +263,6 @@ mod tests {
         let replacements = vocab.get_replacements();
         assert_eq!(replacements.len(), 2);
         assert!(replacements.contains(&("Marshal".to_string(), "Marcel".to_string())));
-        assert!(replacements
-            .contains(&("cubernetes".to_string(), "Kubernetes".to_string())));
+        assert!(replacements.contains(&("cubernetes".to_string(), "Kubernetes".to_string())));
     }
 }

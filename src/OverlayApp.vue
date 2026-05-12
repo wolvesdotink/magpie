@@ -1,22 +1,29 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect, onUnmounted } from "vue";
-import { useAppState } from "@/composables/useAppState";
+import { computed, ref, watch, watchEffect, onUnmounted } from 'vue';
+import { useAppState } from '@/composables/useAppState';
 
-const { recording, processing, correcting, transitionSource, recordingGeneration, amplitude, partialText, error, showError } =
-  useAppState();
+const {
+  recording,
+  processing,
+  correcting,
+  transitionSource,
+  recordingGeneration,
+  amplitude,
+  partialText,
+  error,
+  showError,
+} = useAppState();
 
 // Truncate long error messages so the pill doesn't grow unbounded; the
 // full text still ends up in the Tauri log + dev console.
 const ERROR_MAX_CHARS = 80;
 const errorShort = computed(() => {
-  const msg = error.value ?? "";
-  return msg.length > ERROR_MAX_CHARS ? msg.slice(0, ERROR_MAX_CHARS - 1) + "…" : msg;
+  const msg = error.value ?? '';
+  return msg.length > ERROR_MAX_CHARS ? msg.slice(0, ERROR_MAX_CHARS - 1) + '…' : msg;
 });
 
 const pillTransitionName = computed(() =>
-  recording.value && transitionSource.value === "processing"
-    ? "pill-instant"
-    : "pill",
+  recording.value && transitionSource.value === 'processing' ? 'pill-instant' : 'pill',
 );
 
 function onAfterEnter() {
@@ -72,7 +79,7 @@ let animationFrame: number | null = null;
 
 // 9 bars — asymmetric bell-curve for organic, natural feel
 const barWeights = [0.3, 0.55, 0.78, 0.92, 1.0, 0.88, 0.68, 0.45, 0.25];
-const MIN_SCALE = 0.10;
+const MIN_SCALE = 0.1;
 const MAX_HEIGHT = 24;
 
 // Per-bar sine noise gives each bar its own "personality"
@@ -88,9 +95,10 @@ watchEffect((onCleanup) => {
       // Per-bar organic noise — overlapping sine waves at different frequencies
       // so each bar dances slightly differently, like a real visualizer
       elapsed += 0.018;
-      barNoises.value = barWeights.map((_, i) =>
-        Math.sin(elapsed * (1.8 + i * 0.4) + i * 1.1) *
-        Math.cos(elapsed * (0.7 + i * 0.2) + i * 0.5),
+      barNoises.value = barWeights.map(
+        (_, i) =>
+          Math.sin(elapsed * (1.8 + i * 0.4) + i * 1.1) *
+          Math.cos(elapsed * (0.7 + i * 0.2) + i * 0.5),
       );
 
       animationFrame = requestAnimationFrame(tick);
@@ -116,7 +124,10 @@ const barHeights = computed(() => {
     const noise = barNoises.value[i] || 0;
     // Noise contributes more when amplitude is present — bars feel alive when speaking
     const noiseContrib = noise * (0.04 + amp * 0.18);
-    const scale = Math.min(1, Math.max(MIN_SCALE, MIN_SCALE + amp * (1 - MIN_SCALE) + noiseContrib));
+    const scale = Math.min(
+      1,
+      Math.max(MIN_SCALE, MIN_SCALE + amp * (1 - MIN_SCALE) + noiseContrib),
+    );
     return Math.max(2, Math.round(w * scale * MAX_HEIGHT));
   });
 });
@@ -155,7 +166,9 @@ const barHeights = computed(() => {
               </svg>
             </div>
             <div class="content-swap">
-              <span class="label shimmer swap-item" :class="{ active: showTranscribingLabel }">{{ correcting ? 'Cleaning up' : 'Transcribing' }}</span>
+              <span class="label shimmer swap-item" :class="{ active: showTranscribingLabel }">{{
+                correcting ? 'Cleaning up' : 'Transcribing'
+              }}</span>
               <div class="typing-dots swap-item" :class="{ active: !showTranscribingLabel }">
                 <div class="t-dot" style="--d: 0s; --warmth: 0deg" />
                 <div class="t-dot" style="--d: 0.2s; --warmth: -10deg" />
@@ -231,9 +244,10 @@ const barHeights = computed(() => {
   filter: blur(2px);
 }
 .caption-enter-active {
-  transition: opacity 0.25s ease-out,
-              transform 0.25s ease-out,
-              filter 0.25s ease-out;
+  transition:
+    opacity 0.25s ease-out,
+    transform 0.25s ease-out,
+    filter 0.25s ease-out;
 }
 .caption-enter-to {
   opacity: 1;
@@ -309,9 +323,10 @@ const barHeights = computed(() => {
   filter: blur(4px);
 }
 .pill-enter-active {
-  transition: opacity 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-              transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-              filter 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition:
+    opacity 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    filter 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .pill-enter-to {
   opacity: 1;
@@ -325,9 +340,10 @@ const barHeights = computed(() => {
   filter: blur(0);
 }
 .pill-leave-active {
-  transition: opacity 0.2s ease-in,
-              transform 0.2s ease-in,
-              filter 0.2s ease-in;
+  transition:
+    opacity 0.2s ease-in,
+    transform 0.2s ease-in,
+    filter 0.2s ease-in;
 }
 .pill-leave-to {
   opacity: 0;
@@ -343,13 +359,16 @@ const barHeights = computed(() => {
 }
 
 @keyframes border-glow-red {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(224, 85, 85, 0),
-                0 0 6px rgba(224, 85, 85, 0.08);
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(224, 85, 85, 0),
+      0 0 6px rgba(224, 85, 85, 0.08);
   }
   50% {
-    box-shadow: 0 0 0 2px rgba(224, 85, 85, 0.06),
-                0 0 12px rgba(224, 85, 85, 0.15);
+    box-shadow:
+      0 0 0 2px rgba(224, 85, 85, 0.06),
+      0 0 12px rgba(224, 85, 85, 0.15);
   }
 }
 
@@ -372,8 +391,15 @@ const barHeights = computed(() => {
 }
 
 @keyframes dot-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
 }
 
 .sonar-ring {
@@ -412,13 +438,16 @@ const barHeights = computed(() => {
 }
 
 @keyframes border-glow-gold {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 166, 35, 0),
-                0 0 6px rgba(245, 166, 35, 0.06);
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(245, 166, 35, 0),
+      0 0 6px rgba(245, 166, 35, 0.06);
   }
   50% {
-    box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.05),
-                0 0 10px rgba(245, 166, 35, 0.12);
+    box-shadow:
+      0 0 0 2px rgba(245, 166, 35, 0.05),
+      0 0 10px rgba(245, 166, 35, 0.12);
   }
 }
 
@@ -437,7 +466,9 @@ const barHeights = computed(() => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spinner-track {
@@ -470,8 +501,9 @@ const barHeights = computed(() => {
   grid-area: 1 / 1;
   opacity: 0;
   transform: translateY(3px);
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .swap-item.active {
@@ -482,7 +514,7 @@ const barHeights = computed(() => {
 /* ---- Recording: audio wave bars ---- */
 .wave-bars {
   display: flex;
-  align-items: center;       /* center-anchored = proper waveform feel */
+  align-items: center; /* center-anchored = proper waveform feel */
   justify-content: center;
   gap: 2.5px;
   height: 14px;
@@ -498,16 +530,22 @@ const barHeights = computed(() => {
     var(--recording),
     color-mix(in oklch, var(--recording) 65%, #ffb8a8)
   );
-  box-shadow: 0 0 6px rgba(224, 85, 85, 0.3),
-              0 0 12px rgba(224, 85, 85, 0.06);
+  box-shadow:
+    0 0 6px rgba(224, 85, 85, 0.3),
+    0 0 12px rgba(224, 85, 85, 0.06);
   transition: height 0.06s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: height;
   animation: bar-breathe 2.8s ease-in-out calc(var(--i, 0) * 0.18s) infinite;
 }
 
 @keyframes bar-breathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 /* ---- Transcribing: bouncing dots (cartoon physics) ---- */
@@ -526,8 +564,9 @@ const barHeights = computed(() => {
   height: 5.5px;
   border-radius: 50%;
   background: var(--processing);
-  box-shadow: 0 0 6px rgba(245, 166, 35, 0.3),
-              0 0 12px rgba(245, 166, 35, 0.08);
+  box-shadow:
+    0 0 6px rgba(245, 166, 35, 0.3),
+    0 0 12px rgba(245, 166, 35, 0.08);
   filter: hue-rotate(var(--warmth, 0deg));
   animation: dot-hop 1.6s cubic-bezier(0.4, 0, 0.2, 1) var(--d, 0s) infinite;
   will-change: transform;
@@ -548,7 +587,9 @@ const barHeights = computed(() => {
 }
 
 @keyframes dot-hop {
-  0%, 82%, 100% {
+  0%,
+  82%,
+  100% {
     transform: translateY(4px) scaleY(1) scaleX(1);
     opacity: 0.3;
   }
@@ -564,7 +605,7 @@ const barHeights = computed(() => {
   }
   /* Peak hang — brief float at the top */
   32% {
-    transform: translateY(-4px) scaleY(1.0) scaleX(1.0);
+    transform: translateY(-4px) scaleY(1) scaleX(1);
     opacity: 1;
   }
   /* Falling — stretch vertically */
@@ -591,7 +632,9 @@ const barHeights = computed(() => {
 
 /* Shadow scales inversely to dot height — wider when dot is closer */
 @keyframes dot-shadow {
-  0%, 82%, 100% {
+  0%,
+  82%,
+  100% {
     transform: translateX(-50%) scaleX(1);
     opacity: 0.15;
   }
@@ -636,8 +679,12 @@ const barHeights = computed(() => {
 }
 
 @keyframes shimmer-sweep {
-  0%   { background-position: 100% 0; }
-  100% { background-position: -50% 0; }
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -50% 0;
+  }
 }
 
 /* ---- Instant enter (processing → recording) ---- */
@@ -656,9 +703,10 @@ const barHeights = computed(() => {
   filter: blur(0);
 }
 .pill-instant-leave-active {
-  transition: opacity 0.2s ease-in,
-              transform 0.2s ease-in,
-              filter 0.2s ease-in;
+  transition:
+    opacity 0.2s ease-in,
+    transform 0.2s ease-in,
+    filter 0.2s ease-in;
 }
 .pill-instant-leave-to {
   opacity: 0;

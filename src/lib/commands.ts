@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from '@tauri-apps/api/core';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ export interface PermissionsStatus {
 }
 
 export interface UserSettings {
-  activationMode: "holdFn" | "tapFn" | "doubleTapFn" | "shortcut";
+  activationMode: 'holdFn' | 'tapFn' | 'doubleTapFn' | 'shortcut';
   language: string | null;
   selectedModel: string | null;
   autoStart: boolean;
@@ -72,7 +72,7 @@ export interface UserSettings {
 export interface VocabularyEntry {
   wrong: string;
   correct: string;
-  source: "auto" | "manual";
+  source: 'auto' | 'manual';
   confidence: number;
   createdAt: string;
   lastUsed: string;
@@ -80,116 +80,96 @@ export interface VocabularyEntry {
 
 // ── Recording ──────────────────────────────────────────────────────
 
-export const startRecording = () => invoke("start_recording");
-export const stopRecording = () => invoke("stop_recording");
-export const toggleRecording = () => invoke("toggle_recording");
-export const cancelRecording = () => invoke("cancel_recording");
+export const startRecording = () => invoke('start_recording');
+export const stopRecording = () => invoke('stop_recording');
+export const toggleRecording = () => invoke('toggle_recording');
+export const cancelRecording = () => invoke('cancel_recording');
 
 // ── App State ──────────────────────────────────────────────────────
 
-export const getAppState = () => invoke<AppState>("get_app_state");
+export const getAppState = () => invoke<AppState>('get_app_state');
 
 // ── Models ─────────────────────────────────────────────────────────
 
-export const getAvailableModels = () =>
-  invoke<ModelInfo[]>("get_available_models");
+export const getAvailableModels = () => invoke<ModelInfo[]>('get_available_models');
 
-export const getDownloadedModels = () =>
-  invoke<string[]>("get_downloaded_models");
+export const getDownloadedModels = () => invoke<string[]>('get_downloaded_models');
 
-export const downloadModel = (modelId: string) =>
-  invoke("download_model", { modelId });
+export const downloadModel = (modelId: string) => invoke('download_model', { modelId });
 
-export const cancelDownload = (modelId: string) =>
-  invoke("cancel_download", { modelId });
+export const cancelDownload = (modelId: string) => invoke('cancel_download', { modelId });
 
-export const selectModel = (modelId: string) =>
-  invoke("select_model", { modelId });
+export const selectModel = (modelId: string) => invoke('select_model', { modelId });
 
-export const deleteModelFile = (modelId: string) =>
-  invoke("delete_model_file", { modelId });
+export const deleteModelFile = (modelId: string) => invoke('delete_model_file', { modelId });
 
 // ── Correction Models ─────────────────────────────────────────────
 
 export const getAvailableCorrectionModels = () =>
-  invoke<CorrectionModelInfo[]>("get_available_correction_models");
+  invoke<CorrectionModelInfo[]>('get_available_correction_models');
 
 export const getDownloadedCorrectionModels = () =>
-  invoke<string[]>("get_downloaded_correction_models");
+  invoke<string[]>('get_downloaded_correction_models');
 
 export const downloadCorrectionModel = (modelId: string) =>
-  invoke("download_correction_model", { modelId });
+  invoke('download_correction_model', { modelId });
 
 export const selectCorrectionModel = (modelId: string) =>
-  invoke("select_correction_model", { modelId });
+  invoke('select_correction_model', { modelId });
 
 export const deleteCorrectionModelFile = (modelId: string) =>
-  invoke("delete_correction_model_file", { modelId });
+  invoke('delete_correction_model_file', { modelId });
 
 // ── Hotkey ─────────────────────────────────────────────────────────
 
-export const restartFnKeyMonitor = () =>
-  invoke<boolean>("restart_fn_key_monitor");
+export const restartFnKeyMonitor = () => invoke<boolean>('restart_fn_key_monitor');
 
-export const getFnKeyMonitorStatus = () =>
-  invoke<boolean>("get_fn_key_monitor_status");
+export const getFnKeyMonitorStatus = () => invoke<boolean>('get_fn_key_monitor_status');
 
 /** Re-register the global shortcut. Pass `null` to revert to the default. */
 export const updateGlobalShortcut = (shortcut: string | null) =>
-  invoke<void>("update_global_shortcut", { shortcut });
+  invoke<void>('update_global_shortcut', { shortcut });
 
 // ── Permissions ────────────────────────────────────────────────────
 
-export const checkPermissions = () =>
-  invoke<PermissionsStatus>("check_permissions");
+export const checkPermissions = () => invoke<PermissionsStatus>('check_permissions');
 
-export const requestMicrophonePermission = () =>
-  invoke<boolean>("request_microphone_permission");
+export const requestMicrophonePermission = () => invoke<boolean>('request_microphone_permission');
 
-export const openMicrophoneSettings = () =>
-  invoke("open_microphone_settings");
+export const openMicrophoneSettings = () => invoke('open_microphone_settings');
 
-export const openAccessibilitySettings = () =>
-  invoke("open_accessibility_settings");
+export const openAccessibilitySettings = () => invoke('open_accessibility_settings');
 
 export const requestInputMonitoringPermission = () =>
-  invoke<boolean>("request_input_monitoring_permission");
+  invoke<boolean>('request_input_monitoring_permission');
 
-export const openInputMonitoringSettings = () =>
-  invoke("open_input_monitoring_settings");
+export const openInputMonitoringSettings = () => invoke('open_input_monitoring_settings');
 
-export const restartApp = () => invoke<void>("restart_app");
+export const restartApp = () => invoke<void>('restart_app');
 
 // ── Settings ───────────────────────────────────────────────────────
 
-export const getSettings = () => invoke<UserSettings>("get_settings");
+export const getSettings = () => invoke<UserSettings>('get_settings');
 
-export const updateSettings = (settings: UserSettings) =>
-  invoke("update_settings", { settings });
+export const updateSettings = (settings: UserSettings) => invoke('update_settings', { settings });
 
 // ── Launch at login ────────────────────────────────────────────────
 
-export type LaunchAtLoginStatus =
-  | "enabled"
-  | "notRegistered"
-  | "requiresApproval"
-  | "notFound";
+export type LaunchAtLoginStatus = 'enabled' | 'notRegistered' | 'requiresApproval' | 'notFound';
 
 export const getLaunchAtLoginStatus = () =>
-  invoke<LaunchAtLoginStatus>("get_launch_at_login_status");
+  invoke<LaunchAtLoginStatus>('get_launch_at_login_status');
 
-export const openLoginItemsSettings = () =>
-  invoke<void>("open_login_items_settings");
+export const openLoginItemsSettings = () => invoke<void>('open_login_items_settings');
 
 // ── Vocabulary ────────────────────────────────────────────────────
 
-export const getVocabulary = () =>
-  invoke<VocabularyEntry[]>("get_vocabulary");
+export const getVocabulary = () => invoke<VocabularyEntry[]>('get_vocabulary');
 
 export const addVocabularyEntry = (wrong: string, correct: string) =>
-  invoke("add_vocabulary_entry", { wrong, correct });
+  invoke('add_vocabulary_entry', { wrong, correct });
 
 export const removeVocabularyEntry = (wrong: string) =>
-  invoke("remove_vocabulary_entry", { wrong });
+  invoke('remove_vocabulary_entry', { wrong });
 
-export const clearVocabulary = () => invoke("clear_vocabulary");
+export const clearVocabulary = () => invoke('clear_vocabulary');

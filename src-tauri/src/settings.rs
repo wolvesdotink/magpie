@@ -103,8 +103,7 @@ fn settings_path() -> Result<PathBuf> {
         .context("Failed to determine app data directory")?;
 
     let data_dir = proj_dirs.data_dir();
-    std::fs::create_dir_all(data_dir)
-        .context("Failed to create data directory")?;
+    std::fs::create_dir_all(data_dir).context("Failed to create data directory")?;
 
     Ok(data_dir.join("settings.json"))
 }
@@ -146,10 +145,8 @@ impl UserSettings {
     /// Persist current settings to disk.
     pub fn save(&self) -> Result<()> {
         let path = settings_path()?;
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize settings")?;
-        std::fs::write(&path, json)
-            .context("Failed to write settings file")?;
+        let json = serde_json::to_string_pretty(self).context("Failed to serialize settings")?;
+        std::fs::write(&path, json).context("Failed to write settings file")?;
         log::info!("Settings saved to {}", path.display());
         Ok(())
     }

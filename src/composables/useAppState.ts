@@ -1,5 +1,5 @@
-import { computed, ref, onMounted, onUnmounted } from "vue";
-import { getAppState } from "@/lib/commands";
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { getAppState } from '@/lib/commands';
 import {
   onRecordingStarted,
   onRecordingStopped,
@@ -13,20 +13,20 @@ import {
   onPartialTranscription,
   type TranscriptionResult,
   type AudioAmplitudePayload,
-} from "@/lib/events";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+} from '@/lib/events';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
 export function useAppState() {
   const recording = ref(false);
   const processing = ref(false);
   const hasModel = ref(false);
-  const lastTranscription = ref("");
+  const lastTranscription = ref('');
   const correcting = ref(false);
   const error = ref<string | null>(null);
   const transitionSource = ref<'idle' | 'processing' | null>(null);
   const recordingGeneration = ref(0);
   const amplitude = ref(0);
-  const partialText = ref("");
+  const partialText = ref('');
   // Drives the auto-dismissing error pill in OverlayApp.vue. We use a
   // tick counter rather than a Date.now() comparison so the pill clears
   // reactively without polling. The setTimeout is held in a ref so a new
@@ -57,7 +57,7 @@ export function useAppState() {
       hasModel.value = state.hasModel;
       lastTranscription.value = state.lastTranscription;
     } catch (e) {
-      console.error("Failed to get app state:", e);
+      console.error('Failed to get app state:', e);
     }
 
     // Listen for state changes
@@ -75,7 +75,7 @@ export function useAppState() {
         }
         recordingGeneration.value++;
         // New recording wipes any leftover partial caption from the prior session.
-        partialText.value = "";
+        partialText.value = '';
       }),
     );
 
@@ -111,7 +111,7 @@ export function useAppState() {
         lastTranscription.value = result.text;
         // Final result has replaced the live preview — clear so the
         // overlay's processing pill renders without a stale caption.
-        partialText.value = "";
+        partialText.value = '';
       }),
     );
 
@@ -127,7 +127,7 @@ export function useAppState() {
         correcting.value = false;
         // Drop any stale partial caption — a failed final pass means the
         // preview text is no longer the user's intended output.
-        partialText.value = "";
+        partialText.value = '';
         flashError(err.error);
       }),
     );

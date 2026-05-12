@@ -1,4 +1,4 @@
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 export interface TranscriptionResult {
   text: string;
@@ -46,23 +46,21 @@ export interface VocabularyLearnedPayload {
 // ── Event Listeners ────────────────────────────────────────────────
 
 export function onRecordingStarted(callback: () => void): Promise<UnlistenFn> {
-  return listen("recording-started", callback);
+  return listen('recording-started', callback);
 }
 
 export function onRecordingStopped(callback: () => void): Promise<UnlistenFn> {
-  return listen("recording-stopped", callback);
+  return listen('recording-stopped', callback);
 }
 
-export function onTranscriptionStarted(
-  callback: () => void,
-): Promise<UnlistenFn> {
-  return listen("transcription-started", callback);
+export function onTranscriptionStarted(callback: () => void): Promise<UnlistenFn> {
+  return listen('transcription-started', callback);
 }
 
 export function onTranscriptionComplete(
   callback: (result: TranscriptionResult) => void,
 ): Promise<UnlistenFn> {
-  return listen("transcription-complete", (event) => {
+  return listen('transcription-complete', (event) => {
     callback(event.payload as TranscriptionResult);
   });
 }
@@ -70,7 +68,7 @@ export function onTranscriptionComplete(
 export function onTranscriptionError(
   callback: (error: TranscriptionError) => void,
 ): Promise<UnlistenFn> {
-  return listen("transcription-error", (event) => {
+  return listen('transcription-error', (event) => {
     callback(event.payload as TranscriptionError);
   });
 }
@@ -78,7 +76,7 @@ export function onTranscriptionError(
 export function onPartialTranscription(
   callback: (data: PartialTranscriptionPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen("partial-transcription", (event) => {
+  return listen('partial-transcription', (event) => {
     callback(event.payload as PartialTranscriptionPayload);
   });
 }
@@ -86,7 +84,7 @@ export function onPartialTranscription(
 export function onModelDownloadProgress(
   callback: (progress: ModelDownloadProgress) => void,
 ): Promise<UnlistenFn> {
-  return listen("model-download-progress", (event) => {
+  return listen('model-download-progress', (event) => {
     callback(event.payload as ModelDownloadProgress);
   });
 }
@@ -94,7 +92,7 @@ export function onModelDownloadProgress(
 export function onModelDownloadComplete(
   callback: (data: { modelId: string }) => void,
 ): Promise<UnlistenFn> {
-  return listen("model-download-complete", (event) => {
+  return listen('model-download-complete', (event) => {
     callback(event.payload as { modelId: string });
   });
 }
@@ -102,15 +100,13 @@ export function onModelDownloadComplete(
 export function onModelDownloadCancelled(
   callback: (data: { modelId: string }) => void,
 ): Promise<UnlistenFn> {
-  return listen("model-download-cancelled", (event) => {
+  return listen('model-download-cancelled', (event) => {
     callback(event.payload as { modelId: string });
   });
 }
 
-export function onAppStateChanged(
-  callback: (state: AppStatePayload) => void,
-): Promise<UnlistenFn> {
-  return listen("app-state-changed", (event) => {
+export function onAppStateChanged(callback: (state: AppStatePayload) => void): Promise<UnlistenFn> {
+  return listen('app-state-changed', (event) => {
     callback(event.payload as AppStatePayload);
   });
 }
@@ -118,27 +114,23 @@ export function onAppStateChanged(
 export function onPermissionsStatus(
   callback: (status: PermissionsPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen("permissions-status", (event) => {
+  return listen('permissions-status', (event) => {
     callback(event.payload as PermissionsPayload);
   });
 }
 
-export function onCorrectionStarted(
-  callback: () => void,
-): Promise<UnlistenFn> {
-  return listen("correction-started", callback);
+export function onCorrectionStarted(callback: () => void): Promise<UnlistenFn> {
+  return listen('correction-started', callback);
 }
 
-export function onCorrectionComplete(
-  callback: () => void,
-): Promise<UnlistenFn> {
-  return listen("correction-complete", callback);
+export function onCorrectionComplete(callback: () => void): Promise<UnlistenFn> {
+  return listen('correction-complete', callback);
 }
 
 export function onAudioAmplitude(
   callback: (data: AudioAmplitudePayload) => void,
 ): Promise<UnlistenFn> {
-  return listen("audio-amplitude", (event) => {
+  return listen('audio-amplitude', (event) => {
     callback(event.payload as AudioAmplitudePayload);
   });
 }
@@ -146,7 +138,7 @@ export function onAudioAmplitude(
 export function onVocabularyLearned(
   callback: (data: VocabularyLearnedPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen("vocabulary-learned", (event) => {
+  return listen('vocabulary-learned', (event) => {
     callback(event.payload as VocabularyLearnedPayload);
   });
 }

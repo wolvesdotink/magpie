@@ -39,8 +39,7 @@ pub fn load_correction_model(backend: &LlamaBackend, path: &Path) -> Result<Llam
 
     // Force CPU-only inference (n_gpu_layers=0). These correction models are small
     // (0.5B-1.5B params) and run fast on CPU; no need for Metal overhead.
-    let params = LlamaModelParams::default()
-        .with_n_gpu_layers(0);
+    let params = LlamaModelParams::default().with_n_gpu_layers(0);
     let model = LlamaModel::load_from_file(backend, path, &params)
         .map_err(|e| anyhow::anyhow!("Failed to load correction model: {:?}", e))?;
 
@@ -104,10 +103,7 @@ pub fn correct_transcription(
         .context("Failed to decode prompt batch")?;
 
     // Set up sampler: low temperature for near-deterministic output
-    let mut sampler = LlamaSampler::chain_simple([
-        LlamaSampler::temp(0.1),
-        LlamaSampler::dist(42),
-    ]);
+    let mut sampler = LlamaSampler::chain_simple([LlamaSampler::temp(0.1), LlamaSampler::dist(42)]);
 
     // Generate tokens
     let mut output_pieces: Vec<String> = Vec::new();
@@ -209,10 +205,7 @@ mod tests {
 
     #[test]
     fn test_validate_correction_accepts_identical() {
-        assert!(validate_correction(
-            "Hello world",
-            "Hello world"
-        ));
+        assert!(validate_correction("Hello world", "Hello world"));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { useSettings } from "@/composables/useSettings";
-import { LANGUAGES } from "@/lib/languages";
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { useSettings } from '@/composables/useSettings';
+import { LANGUAGES } from '@/lib/languages';
 import {
   getDownloadedModels,
   getDownloadedCorrectionModels,
@@ -19,14 +19,14 @@ import {
   type ModelInfo,
   type CorrectionModelInfo,
   type VocabularyEntry,
-} from "@/lib/commands";
+} from '@/lib/commands';
 import {
   onModelDownloadProgress,
   onModelDownloadComplete,
   onModelDownloadCancelled,
-} from "@/lib/events";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-import UpdatesSection from "@/components/UpdatesSection.vue";
+} from '@/lib/events';
+import type { UnlistenFn } from '@tauri-apps/api/event';
+import UpdatesSection from '@/components/UpdatesSection.vue';
 
 withDefaults(
   defineProps<{
@@ -80,8 +80,8 @@ const confirmDeleteCorrection = ref<string | null>(null);
 // ── Vocabulary state ──
 const vocabularyEntries = ref<VocabularyEntry[]>([]);
 const showAddVocab = ref(false);
-const vocabWrong = ref("");
-const vocabCorrect = ref("");
+const vocabWrong = ref('');
+const vocabCorrect = ref('');
 const confirmClearVocab = ref(false);
 
 // ── UI state ──
@@ -107,17 +107,11 @@ function isActive(model: ModelInfo): boolean {
   return settings.value?.selectedModel === model.id;
 }
 
-const sortedModels = computed(() =>
-  [...models.value].sort((a, b) => a.sizeBytes - b.sizeBytes),
-);
+const sortedModels = computed(() => [...models.value].sort((a, b) => a.sizeBytes - b.sizeBytes));
 
-const downloadedModels = computed(() =>
-  sortedModels.value.filter((m) => isDownloaded(m)),
-);
+const downloadedModels = computed(() => sortedModels.value.filter((m) => isDownloaded(m)));
 
-const availableModels = computed(() =>
-  sortedModels.value.filter((m) => !isDownloaded(m)),
-);
+const availableModels = computed(() => sortedModels.value.filter((m) => !isDownloaded(m)));
 
 async function handleSelectModel(model: ModelInfo) {
   if (!isDownloaded(model)) return;
@@ -125,7 +119,7 @@ async function handleSelectModel(model: ModelInfo) {
   try {
     await selectModel(model.id);
     await updateSelectedModel(model.id);
-    emit("modelChanged");
+    emit('modelChanged');
   } catch (e) {
     modelError.value = `Failed to load: ${e}`;
   }
@@ -142,10 +136,10 @@ async function handleDownload(model: ModelInfo) {
     // Auto-select after download
     await selectModel(model.id);
     await updateSelectedModel(model.id);
-    emit("modelChanged");
+    emit('modelChanged');
   } catch (e) {
     // Suppress cancel-as-rejection — the cancelled listener resets state.
-    if (!String(e).toLowerCase().includes("cancel")) {
+    if (!String(e).toLowerCase().includes('cancel')) {
       modelError.value = `Download failed: ${e}`;
     }
   } finally {
@@ -159,7 +153,7 @@ async function handleCancelDownload() {
   try {
     await cancelDownload(downloadingModelId.value);
   } catch (e) {
-    console.error("Cancel failed:", e);
+    console.error('Cancel failed:', e);
   }
 }
 
@@ -175,7 +169,7 @@ async function handleDelete(model: ModelInfo) {
     downloadedFiles.value = await getDownloadedModels();
     // If we deleted the active model, clear selection
     if (isActive(model)) {
-      emit("modelChanged");
+      emit('modelChanged');
     }
   } catch (e) {
     modelError.value = `Delete failed: ${e}`;
@@ -228,7 +222,7 @@ async function handleDownloadCorrection(model: CorrectionModelInfo) {
     await selectCorrectionModel(model.id);
     await updateSelectedCorrectionModel(model.id);
   } catch (e) {
-    if (!String(e).toLowerCase().includes("cancel")) {
+    if (!String(e).toLowerCase().includes('cancel')) {
       correctionModelError.value = `Download failed: ${e}`;
     }
   } finally {
@@ -244,7 +238,7 @@ async function handleCancelCorrectionDownload() {
   try {
     await cancelDownload(downloadingCorrectionModelId.value);
   } catch (e) {
-    console.error("Cancel failed:", e);
+    console.error('Cancel failed:', e);
   }
 }
 
@@ -268,7 +262,7 @@ async function loadVocabulary() {
   try {
     vocabularyEntries.value = await getVocabulary();
   } catch (e) {
-    console.error("Failed to load vocabulary:", e);
+    console.error('Failed to load vocabulary:', e);
   }
 }
 
@@ -278,12 +272,12 @@ async function handleAddVocab() {
   if (!wrong || !correct || wrong === correct) return;
   try {
     await addVocabularyEntry(wrong, correct);
-    vocabWrong.value = "";
-    vocabCorrect.value = "";
+    vocabWrong.value = '';
+    vocabCorrect.value = '';
     showAddVocab.value = false;
     await loadVocabulary();
   } catch (e) {
-    console.error("Failed to add vocabulary entry:", e);
+    console.error('Failed to add vocabulary entry:', e);
   }
 }
 
@@ -292,7 +286,7 @@ async function handleRemoveVocab(wrong: string) {
     await removeVocabularyEntry(wrong);
     await loadVocabulary();
   } catch (e) {
-    console.error("Failed to remove vocabulary entry:", e);
+    console.error('Failed to remove vocabulary entry:', e);
   }
 }
 
@@ -309,7 +303,7 @@ async function handleClearVocab() {
     await clearVocabulary();
     await loadVocabulary();
   } catch (e) {
-    console.error("Failed to clear vocabulary:", e);
+    console.error('Failed to clear vocabulary:', e);
   }
 }
 
@@ -383,45 +377,45 @@ onMounted(async () => {
     }),
   );
 
-  document.addEventListener("mousedown", onClickOutsideLang);
+  document.addEventListener('mousedown', onClickOutsideLang);
 });
 
 onUnmounted(() => {
   unlisteners.forEach((u) => u());
-  document.removeEventListener("mousedown", onClickOutsideLang);
+  document.removeEventListener('mousedown', onClickOutsideLang);
   stopCapture();
 });
 
 const activationModes = [
   {
-    id: "holdFn" as const,
-    label: "Hold Fn",
-    desc: "Hold to record, release to stop",
-    icon: "M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm3 10h8",
+    id: 'holdFn' as const,
+    label: 'Hold Fn',
+    desc: 'Hold to record, release to stop',
+    icon: 'M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm3 10h8',
   },
   {
-    id: "tapFn" as const,
-    label: "Tap Fn",
-    desc: "Press Fn to start, press Fn again to stop (also fires on Fn shortcuts)",
-    icon: "M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm3 10h5",
+    id: 'tapFn' as const,
+    label: 'Tap Fn',
+    desc: 'Press Fn to start, press Fn again to stop (also fires on Fn shortcuts)',
+    icon: 'M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm3 10h5',
   },
   {
-    id: "doubleTapFn" as const,
-    label: "Double-tap Fn",
-    desc: "Tap twice to start, once to stop",
-    icon: "M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm3 10h3m5 0h3",
+    id: 'doubleTapFn' as const,
+    label: 'Double-tap Fn',
+    desc: 'Tap twice to start, once to stop',
+    icon: 'M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm3 10h3m5 0h3',
   },
   {
-    id: "shortcut" as const,
-    label: "Keyboard shortcut",
-    desc: "Use a custom key combination",
-    icon: "M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm4 8l3 3 5-6",
+    id: 'shortcut' as const,
+    label: 'Keyboard shortcut',
+    desc: 'Use a custom key combination',
+    icon: 'M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm4 8l3 3 5-6',
   },
 ];
 
 // ── Global shortcut capture ────────────────────────────────────────
 
-const DEFAULT_SHORTCUT_DISPLAY = "⌘⇧Space";
+const DEFAULT_SHORTCUT_DISPLAY = '⌘⇧Space';
 
 const capturing = ref(false);
 const shortcutError = ref<string | null>(null);
@@ -432,19 +426,19 @@ function keyToTauri(e: KeyboardEvent): string | null {
   const key = e.key;
 
   // Whitespace + special keys
-  if (key === " ") return "Space";
-  if (key === "Escape") return "Escape";
-  if (key === "Tab") return "Tab";
-  if (key === "Enter") return "Enter";
-  if (key === "Backspace") return "Backspace";
-  if (key === "ArrowUp") return "Up";
-  if (key === "ArrowDown") return "Down";
-  if (key === "ArrowLeft") return "Left";
-  if (key === "ArrowRight") return "Right";
-  if (key === "PageUp") return "PageUp";
-  if (key === "PageDown") return "PageDown";
-  if (key === "Home") return "Home";
-  if (key === "End") return "End";
+  if (key === ' ') return 'Space';
+  if (key === 'Escape') return 'Escape';
+  if (key === 'Tab') return 'Tab';
+  if (key === 'Enter') return 'Enter';
+  if (key === 'Backspace') return 'Backspace';
+  if (key === 'ArrowUp') return 'Up';
+  if (key === 'ArrowDown') return 'Down';
+  if (key === 'ArrowLeft') return 'Left';
+  if (key === 'ArrowRight') return 'Right';
+  if (key === 'PageUp') return 'PageUp';
+  if (key === 'PageDown') return 'PageDown';
+  if (key === 'Home') return 'Home';
+  if (key === 'End') return 'End';
 
   // Function keys (F1–F24) come through as-is, but normalize casing.
   if (/^F\d{1,2}$/.test(key)) return key;
@@ -462,52 +456,50 @@ function keyToTauri(e: KeyboardEvent): string | null {
  *  doesn't include a non-modifier key. */
 function buildShortcutString(e: KeyboardEvent): string | null {
   const mods: string[] = [];
-  if (e.metaKey || e.ctrlKey) mods.push("CmdOrCtrl");
-  if (e.altKey) mods.push("Alt");
-  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey || e.ctrlKey) mods.push('CmdOrCtrl');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
 
   const key = keyToTauri(e);
   if (!key) return null;
-  return [...mods, key].join("+");
+  return [...mods, key].join('+');
 }
 
 /** Pretty-print a Tauri shortcut string with macOS glyphs (⌘⇧⌃⌥). */
 function formatShortcut(s: string | null | undefined): string {
   if (!s) return DEFAULT_SHORTCUT_DISPLAY;
   return s
-    .split("+")
+    .split('+')
     .map((part) => {
       switch (part) {
-        case "CmdOrCtrl":
-        case "Cmd":
-        case "Command":
-        case "Meta":
-          return "⌘";
-        case "Ctrl":
-        case "Control":
-          return "⌃";
-        case "Alt":
-        case "Option":
-          return "⌥";
-        case "Shift":
-          return "⇧";
+        case 'CmdOrCtrl':
+        case 'Cmd':
+        case 'Command':
+        case 'Meta':
+          return '⌘';
+        case 'Ctrl':
+        case 'Control':
+          return '⌃';
+        case 'Alt':
+        case 'Option':
+          return '⌥';
+        case 'Shift':
+          return '⇧';
         default:
           return part;
       }
     })
-    .join("");
+    .join('');
 }
 
-const displayedShortcut = computed(() =>
-  formatShortcut(settings.value?.customShortcut ?? null),
-);
+const displayedShortcut = computed(() => formatShortcut(settings.value?.customShortcut ?? null));
 
 let captureHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function stopCapture() {
   capturing.value = false;
   if (captureHandler) {
-    window.removeEventListener("keydown", captureHandler, true);
+    window.removeEventListener('keydown', captureHandler, true);
     captureHandler = null;
   }
 }
@@ -527,24 +519,19 @@ function startCapture() {
     e.stopPropagation();
 
     // Modifier-only presses: keep listening until the user adds a real key.
-    if (
-      e.key === "Meta" ||
-      e.key === "Control" ||
-      e.key === "Alt" ||
-      e.key === "Shift"
-    ) {
+    if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Shift') {
       return;
     }
 
     // Escape cancels capture without changing the shortcut.
-    if (e.key === "Escape") {
+    if (e.key === 'Escape') {
       stopCapture();
       return;
     }
 
     const built = buildShortcutString(e);
     if (!built) {
-      shortcutError.value = "Could not interpret that key.";
+      shortcutError.value = 'Could not interpret that key.';
       return;
     }
 
@@ -552,7 +539,7 @@ function startCapture() {
     // letter (which would steal keystrokes globally).
     const hasModifier = /(CmdOrCtrl|Alt|Shift)/.test(built);
     if (!hasModifier) {
-      shortcutError.value = "Must include a modifier (⌘, ⌃, ⌥ or ⇧).";
+      shortcutError.value = 'Must include a modifier (⌘, ⌃, ⌥ or ⇧).';
       return;
     }
 
@@ -566,7 +553,7 @@ function startCapture() {
       });
   };
 
-  window.addEventListener("keydown", captureHandler, true);
+  window.addEventListener('keydown', captureHandler, true);
 }
 
 function resetShortcut() {
@@ -577,7 +564,7 @@ function resetShortcut() {
 }
 
 const currentLanguageLabel = computed(() => {
-  if (currentLanguageCode.value === "auto") return "Auto-detect";
+  if (currentLanguageCode.value === 'auto') return 'Auto-detect';
   const lang = LANGUAGES.find((l) => l.code === currentLanguageCode.value);
   return lang ? lang.nativeName : currentLanguageCode.value.toUpperCase();
 });
@@ -585,74 +572,113 @@ const currentLanguageLabel = computed(() => {
 // ── Sidebar navigation ────────────────────────────────────────────────
 
 type SectionId =
-  | "model"
-  | "language"
-  | "activation"
-  | "transcription"
-  | "vocabulary"
-  | "general"
-  | "updates";
+  | 'model'
+  | 'language'
+  | 'activation'
+  | 'transcription'
+  | 'vocabulary'
+  | 'general'
+  | 'updates';
 
 const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
   {
-    id: "model",
-    label: "Model",
+    id: 'model',
+    label: 'Model',
     icon: '<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
   },
   {
-    id: "language",
-    label: "Language",
+    id: 'language',
+    label: 'Language',
     icon: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>',
   },
   {
-    id: "activation",
-    label: "Activation",
+    id: 'activation',
+    label: 'Activation',
     icon: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M8 16h8"/>',
   },
   {
-    id: "transcription",
-    label: "Transcription",
+    id: 'transcription',
+    label: 'Transcription',
     icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>',
   },
   {
-    id: "vocabulary",
-    label: "Vocabulary",
+    id: 'vocabulary',
+    label: 'Vocabulary',
     icon: '<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>',
   },
   {
-    id: "general",
-    label: "General",
+    id: 'general',
+    label: 'General',
     icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
   },
   {
-    id: "updates",
-    label: "Updates",
+    id: 'updates',
+    label: 'Updates',
     icon: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>',
   },
 ];
 
-const activeSectionId = ref<SectionId>("model");
+const activeSectionId = ref<SectionId>('model');
 
-const searchQuery = ref("");
+const searchQuery = ref('');
 
 // Flat index of searchable settings. Synonyms in `keywords` capture how a
 // user might describe a feature (e.g. "hotkey" → activation), so the search
 // works even when the visible label uses a different word.
-const SEARCH_INDEX: { section: SectionId; label: string; keywords: string }[] =
-  [
-    { section: "model", label: "Whisper model", keywords: "model speech recognition whisper transcribe download size accuracy speed" },
-    { section: "language", label: "Language", keywords: "language locale auto-detect english multilingual" },
-    { section: "activation", label: "Activation mode", keywords: "activation fn hold tap double shortcut hotkey trigger" },
-    { section: "activation", label: "Global hotkey", keywords: "shortcut hotkey keybinding custom capture" },
-    { section: "transcription", label: "Remove filler words", keywords: "um uh hmm filler clean transcription disfluency" },
-    { section: "transcription", label: "Live preview while recording", keywords: "streaming partial captions overlay live preview" },
-    { section: "transcription", label: "Self-correction cleanup", keywords: "correction restate no wait revise cleanup llm" },
-    { section: "transcription", label: "Correction model", keywords: "llm correction model download" },
-    { section: "vocabulary", label: "Learn from corrections", keywords: "vocabulary automatic learning words" },
-    { section: "vocabulary", label: "Add word manually", keywords: "vocabulary manual word add custom" },
-    { section: "general", label: "Launch at login", keywords: "autostart startup login boot launch" },
-    { section: "updates", label: "Updates", keywords: "version update upgrade release changelog" },
-  ];
+const SEARCH_INDEX: { section: SectionId; label: string; keywords: string }[] = [
+  {
+    section: 'model',
+    label: 'Whisper model',
+    keywords: 'model speech recognition whisper transcribe download size accuracy speed',
+  },
+  {
+    section: 'language',
+    label: 'Language',
+    keywords: 'language locale auto-detect english multilingual',
+  },
+  {
+    section: 'activation',
+    label: 'Activation mode',
+    keywords: 'activation fn hold tap double shortcut hotkey trigger',
+  },
+  {
+    section: 'activation',
+    label: 'Global hotkey',
+    keywords: 'shortcut hotkey keybinding custom capture',
+  },
+  {
+    section: 'transcription',
+    label: 'Remove filler words',
+    keywords: 'um uh hmm filler clean transcription disfluency',
+  },
+  {
+    section: 'transcription',
+    label: 'Live preview while recording',
+    keywords: 'streaming partial captions overlay live preview',
+  },
+  {
+    section: 'transcription',
+    label: 'Self-correction cleanup',
+    keywords: 'correction restate no wait revise cleanup llm',
+  },
+  {
+    section: 'transcription',
+    label: 'Correction model',
+    keywords: 'llm correction model download',
+  },
+  {
+    section: 'vocabulary',
+    label: 'Learn from corrections',
+    keywords: 'vocabulary automatic learning words',
+  },
+  {
+    section: 'vocabulary',
+    label: 'Add word manually',
+    keywords: 'vocabulary manual word add custom',
+  },
+  { section: 'general', label: 'Launch at login', keywords: 'autostart startup login boot launch' },
+  { section: 'updates', label: 'Updates', keywords: 'version update upgrade release changelog' },
+];
 
 function sectionLabel(id: SectionId): string {
   return SECTIONS.find((s) => s.id === id)?.label ?? id;
@@ -662,15 +688,13 @@ const searchResults = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   if (!q) return [];
   return SEARCH_INDEX.filter(
-    (i) =>
-      i.label.toLowerCase().includes(q) ||
-      i.keywords.toLowerCase().includes(q),
+    (i) => i.label.toLowerCase().includes(q) || i.keywords.toLowerCase().includes(q),
   );
 });
 
 function jumpToSection(id: SectionId) {
   activeSectionId.value = id;
-  searchQuery.value = "";
+  searchQuery.value = '';
 }
 </script>
 
@@ -688,10 +712,7 @@ function jumpToSection(id: SectionId) {
     <!-- ── Header (embedded only) ── -->
     <div v-if="!standalone" class="flex items-center gap-3 px-5 pt-5 pb-3">
       <button
-        class="flex items-center justify-center w-7 h-7 rounded-lg
-               bg-raised border border-edge
-               text-ink-faint hover:text-ink hover:border-edge-strong hover:bg-hover
-               transition-all duration-150 active:scale-95"
+        class="flex items-center justify-center w-7 h-7 rounded-lg bg-raised border border-edge text-ink-faint hover:text-ink hover:border-edge-strong hover:bg-hover transition-all duration-150 active:scale-95"
         @click="$emit('back')"
       >
         <svg
@@ -757,10 +778,7 @@ function jumpToSection(id: SectionId) {
       </div>
 
       <!-- Search results dropdown -->
-      <div
-        v-if="searchQuery.trim() && searchResults.length > 0"
-        class="search-dropdown"
-      >
+      <div v-if="searchQuery.trim() && searchResults.length > 0" class="search-dropdown">
         <button
           v-for="r in searchResults"
           :key="r.section + ':' + r.label"
@@ -771,12 +789,7 @@ function jumpToSection(id: SectionId) {
           <span class="search-result-section">{{ sectionLabel(r.section) }}</span>
         </button>
       </div>
-      <div
-        v-else-if="searchQuery.trim()"
-        class="search-empty"
-      >
-        No matches.
-      </div>
+      <div v-else-if="searchQuery.trim()" class="search-empty">No matches.</div>
     </div>
 
     <!-- ── Body: sidebar + content ── -->
@@ -822,7 +835,9 @@ function jumpToSection(id: SectionId) {
                 stroke-linecap="round"
                 stroke-linejoin="round"
               >
-                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                <path
+                  d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"
+                />
                 <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
                 <line x1="12" y1="22.08" x2="12" y2="12" />
               </svg>
@@ -831,10 +846,7 @@ function jumpToSection(id: SectionId) {
           </div>
 
           <!-- Active model card -->
-          <div
-            v-if="currentModel"
-            class="p-3 rounded-lg bg-gold/[0.04] border border-gold/20 mb-3"
-          >
+          <div v-if="currentModel" class="p-3 rounded-lg bg-gold/[0.04] border border-gold/20 mb-3">
             <div class="flex items-center justify-between mb-1.5">
               <div class="flex items-center gap-2">
                 <div
@@ -873,13 +885,8 @@ function jumpToSection(id: SectionId) {
               </div>
             </div>
           </div>
-          <div
-            v-else
-            class="p-3 rounded-lg bg-flame/[0.04] border border-flame/15 mb-3"
-          >
-            <span class="text-[12px] text-flame font-medium">
-              No model selected
-            </span>
+          <div v-else class="p-3 rounded-lg bg-flame/[0.04] border border-flame/15 mb-3">
+            <span class="text-[12px] text-flame font-medium"> No model selected </span>
           </div>
 
           <!-- Downloaded models -->
@@ -908,10 +915,7 @@ function jumpToSection(id: SectionId) {
                         : 'border-edge-strong group-hover:border-ink-faint'
                     "
                   >
-                    <div
-                      v-if="isActive(model)"
-                      class="w-1.5 h-1.5 rounded-full bg-gold"
-                    />
+                    <div v-if="isActive(model)" class="w-1.5 h-1.5 rounded-full bg-gold" />
                   </div>
                   <div class="flex flex-col min-w-0">
                     <span
@@ -930,8 +934,7 @@ function jumpToSection(id: SectionId) {
                 <!-- Delete button -->
                 <button
                   v-if="!isActive(model)"
-                  class="flex-shrink-0 p-1 rounded-md opacity-0 group-hover:opacity-100
-                         transition-all duration-150"
+                  class="flex-shrink-0 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150"
                   :class="
                     confirmDelete === model.id
                       ? 'bg-flame/15 text-flame opacity-100'
@@ -951,12 +954,11 @@ function jumpToSection(id: SectionId) {
                     stroke-linejoin="round"
                   >
                     <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    <path
+                      d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"
+                    />
                   </svg>
-                  <span
-                    v-else
-                    class="text-[9px] font-bold uppercase tracking-wider px-0.5"
-                  >
+                  <span v-else class="text-[9px] font-bold uppercase tracking-wider px-0.5">
                     Delete?
                   </span>
                 </button>
@@ -965,14 +967,9 @@ function jumpToSection(id: SectionId) {
           </div>
 
           <!-- Download progress -->
-          <div
-            v-if="downloading"
-            class="mb-3"
-          >
+          <div v-if="downloading" class="mb-3">
             <div class="flex items-center justify-between mb-1.5">
-              <span class="text-[11px] text-ink-muted font-medium">
-                Downloading…
-              </span>
+              <span class="text-[11px] text-ink-muted font-medium"> Downloading… </span>
               <div class="flex items-center gap-2">
                 <span class="text-[11px] text-ink-faint tabular-nums">
                   {{ downloadProgress.toFixed(0) }}%
@@ -981,11 +978,7 @@ function jumpToSection(id: SectionId) {
                   type="button"
                   aria-label="Cancel download"
                   title="Cancel download"
-                  class="flex items-center justify-center w-[18px] h-[18px] rounded-full
-                         bg-raised border border-edge text-ink-faint
-                         transition-colors duration-150
-                         hover:bg-panel hover:text-ink hover:border-edge-strong
-                         active:scale-95"
+                  class="flex items-center justify-center w-[18px] h-[18px] rounded-full bg-raised border border-edge text-ink-faint transition-colors duration-150 hover:bg-panel hover:text-ink hover:border-edge-strong active:scale-95"
                   @click="handleCancelDownload"
                 >
                   <svg
@@ -1006,8 +999,7 @@ function jumpToSection(id: SectionId) {
             </div>
             <div class="h-1 bg-raised shadow-well rounded-full overflow-hidden">
               <div
-                class="h-full bg-gradient-to-r from-gold-deep to-gold rounded-full
-                       transition-[width] duration-300 ease-out"
+                class="h-full bg-gradient-to-r from-gold-deep to-gold rounded-full transition-[width] duration-300 ease-out"
                 :style="{ width: `${downloadProgress}%` }"
               />
             </div>
@@ -1027,15 +1019,8 @@ function jumpToSection(id: SectionId) {
                     <span class="text-[12px] font-semibold text-ink-muted truncate">
                       {{ model.displayName }}
                     </span>
-                    <span
-                      v-if="model.englishOnly"
-                      class="model-badge"
-                    >
-                      EN
-                    </span>
-                    <span v-else class="model-badge model-badge-multi">
-                      Multi
-                    </span>
+                    <span v-if="model.englishOnly" class="model-badge"> EN </span>
+                    <span v-else class="model-badge model-badge-multi"> Multi </span>
                   </div>
                   <div class="flex items-center gap-3 mt-0.5">
                     <span class="text-[10px] text-ink-faint tabular-nums">
@@ -1066,10 +1051,7 @@ function jumpToSection(id: SectionId) {
                   </div>
                 </div>
                 <button
-                  class="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-md
-                         bg-raised border border-edge text-[10px] font-semibold text-ink-muted
-                         hover:bg-hover hover:text-ink hover:border-edge-strong
-                         transition-all duration-150 active:scale-95"
+                  class="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-raised border border-edge text-[10px] font-semibold text-ink-muted hover:bg-hover hover:text-ink hover:border-edge-strong transition-all duration-150 active:scale-95"
                   :disabled="downloading"
                   @click="handleDownload(model)"
                 >
@@ -1094,10 +1076,7 @@ function jumpToSection(id: SectionId) {
           </div>
 
           <!-- Model error -->
-          <div
-            v-if="modelError"
-            class="mt-2 p-2 rounded-md bg-flame/10 border border-flame/20"
-          >
+          <div v-if="modelError" class="mt-2 p-2 rounded-md bg-flame/10 border border-flame/20">
             <span class="text-[11px] text-flame">{{ modelError }}</span>
           </div>
         </section>
@@ -1118,7 +1097,9 @@ function jumpToSection(id: SectionId) {
               >
                 <circle cx="12" cy="12" r="10" />
                 <path d="M2 12h20" />
-                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                <path
+                  d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"
+                />
               </svg>
             </div>
             <span class="section-label">Language</span>
@@ -1136,8 +1117,7 @@ function jumpToSection(id: SectionId) {
 
           <div ref="languageRef" class="relative">
             <button
-              class="w-full flex items-center justify-between p-2.5 rounded-lg
-                     bg-panel border transition-all duration-150"
+              class="w-full flex items-center justify-between p-2.5 rounded-lg bg-panel border transition-all duration-150"
               :class="
                 languageOpen
                   ? 'border-gold/30 shadow-glow-gold'
@@ -1177,9 +1157,7 @@ function jumpToSection(id: SectionId) {
             >
               <div
                 v-if="languageOpen"
-                class="absolute top-full left-0 right-0 mt-1.5
-                       bg-panel border border-edge rounded-lg shadow-elevated
-                       overflow-hidden z-50"
+                class="absolute top-full left-0 right-0 mt-1.5 bg-panel border border-edge rounded-lg shadow-elevated overflow-hidden z-50"
               >
                 <div class="max-h-[200px] overflow-y-auto py-1">
                   <!-- Auto-detect -->
@@ -1266,7 +1244,9 @@ function jumpToSection(id: SectionId) {
                 stroke-linejoin="round"
               >
                 <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M8 16h8" />
+                <path
+                  d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M8 16h8"
+                />
               </svg>
             </div>
             <span class="section-label">Activation</span>
@@ -1276,8 +1256,7 @@ function jumpToSection(id: SectionId) {
             <button
               v-for="mode in activationModes"
               :key="mode.id"
-              class="flex items-center gap-2.5 p-2.5 rounded-lg border
-                     text-left transition-all duration-150"
+              class="flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-all duration-150"
               :class="
                 settings?.activationMode === mode.id
                   ? 'bg-gold/[0.04] border-gold/20'
@@ -1301,11 +1280,7 @@ function jumpToSection(id: SectionId) {
               <div class="flex flex-col min-w-0">
                 <span
                   class="text-[12px] font-semibold"
-                  :class="
-                    settings?.activationMode === mode.id
-                      ? 'text-ink'
-                      : 'text-ink-muted'
-                  "
+                  :class="settings?.activationMode === mode.id ? 'text-ink' : 'text-ink-muted'"
                 >
                   {{ mode.label }}
                 </span>
@@ -1323,17 +1298,13 @@ function jumpToSection(id: SectionId) {
           >
             <div class="flex items-center justify-between gap-3">
               <div class="flex flex-col min-w-0">
-                <span class="text-[12px] font-semibold text-ink">
-                  Global hotkey
-                </span>
+                <span class="text-[12px] font-semibold text-ink"> Global hotkey </span>
                 <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-                  Click to capture. Must include a modifier
-                  (⌘, ⌃, ⌥ or ⇧). Press Esc to cancel.
+                  Click to capture. Must include a modifier (⌘, ⌃, ⌥ or ⇧). Press Esc to cancel.
                 </span>
               </div>
               <button
-                class="px-2.5 py-1 rounded-md bg-raised border min-w-[110px]
-                       text-[11px] font-semibold text-center transition"
+                class="px-2.5 py-1 rounded-md bg-raised border min-w-[110px] text-[11px] font-semibold text-center transition"
                 :class="
                   capturing
                     ? 'border-gold/40 text-gold'
@@ -1341,7 +1312,7 @@ function jumpToSection(id: SectionId) {
                 "
                 @click="startCapture"
               >
-                {{ capturing ? "Press a key…" : displayedShortcut }}
+                {{ capturing ? 'Press a key…' : displayedShortcut }}
               </button>
             </div>
             <button
@@ -1380,13 +1351,10 @@ function jumpToSection(id: SectionId) {
 
           <!-- Filler word removal -->
           <div
-            class="flex items-center justify-between p-2.5 rounded-lg
-                   bg-panel border border-edge"
+            class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge"
           >
             <div class="flex flex-col min-w-0 mr-3">
-              <span class="text-[12px] font-semibold text-ink">
-                Remove filler words
-              </span>
+              <span class="text-[12px] font-semibold text-ink"> Remove filler words </span>
               <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
                 Strips "um", "uh", "hmm" and similar
               </span>
@@ -1402,16 +1370,13 @@ function jumpToSection(id: SectionId) {
 
           <!-- Live partial-caption preview while recording -->
           <div
-            class="flex items-center justify-between p-2.5 rounded-lg
-                   bg-panel border border-edge mt-2"
+            class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge mt-2"
           >
             <div class="flex flex-col min-w-0 mr-3">
-              <span class="text-[12px] font-semibold text-ink">
-                Live preview while recording
-              </span>
+              <span class="text-[12px] font-semibold text-ink"> Live preview while recording </span>
               <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
-                Show partial captions in the overlay as you dictate (extra CPU
-                load; final transcript on stop is unaffected)
+                Show partial captions in the overlay as you dictate (extra CPU load; final
+                transcript on stop is unaffected)
               </span>
             </div>
             <button
@@ -1425,13 +1390,10 @@ function jumpToSection(id: SectionId) {
 
           <!-- Self-correction cleanup -->
           <div
-            class="flex items-center justify-between p-2.5 rounded-lg
-                   bg-panel border border-edge mt-2"
+            class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge mt-2"
           >
             <div class="flex flex-col min-w-0 mr-3">
-              <span class="text-[12px] font-semibold text-ink">
-                Self-correction cleanup
-              </span>
+              <span class="text-[12px] font-semibold text-ink"> Self-correction cleanup </span>
               <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
                 Detect and remove corrections like "no wait" or restated phrases
               </span>
@@ -1470,7 +1432,11 @@ function jumpToSection(id: SectionId) {
                   {{ downloadedCorrectionModels.find((m) => isCorrectionActive(m))?.displayName }}
                 </span>
                 <span class="text-[9px] text-ink-faint tabular-nums ml-auto">
-                  {{ formatBytes(downloadedCorrectionModels.find((m) => isCorrectionActive(m))?.sizeBytes ?? 0) }}
+                  {{
+                    formatBytes(
+                      downloadedCorrectionModels.find((m) => isCorrectionActive(m))?.sizeBytes ?? 0,
+                    )
+                  }}
                 </span>
               </div>
             </div>
@@ -1485,7 +1451,8 @@ function jumpToSection(id: SectionId) {
                   class="model-row group"
                   :class="{
                     'bg-gold/[0.03] border-gold/15': isCorrectionActive(model),
-                    'bg-panel border-edge hover:border-edge-strong hover:bg-raised': !isCorrectionActive(model),
+                    'bg-panel border-edge hover:border-edge-strong hover:bg-raised':
+                      !isCorrectionActive(model),
                   }"
                 >
                   <button
@@ -1519,8 +1486,7 @@ function jumpToSection(id: SectionId) {
                   </button>
                   <button
                     v-if="!isCorrectionActive(model)"
-                    class="flex-shrink-0 p-1 rounded-md opacity-0 group-hover:opacity-100
-                           transition-all duration-150"
+                    class="flex-shrink-0 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150"
                     :class="
                       confirmDeleteCorrection === model.id
                         ? 'bg-flame/15 text-flame opacity-100'
@@ -1540,12 +1506,11 @@ function jumpToSection(id: SectionId) {
                       stroke-linejoin="round"
                     >
                       <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                      <path
+                        d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"
+                      />
                     </svg>
-                    <span
-                      v-else
-                      class="text-[9px] font-bold uppercase tracking-wider px-0.5"
-                    >
+                    <span v-else class="text-[9px] font-bold uppercase tracking-wider px-0.5">
                       Delete?
                     </span>
                   </button>
@@ -1554,14 +1519,9 @@ function jumpToSection(id: SectionId) {
             </div>
 
             <!-- Correction download progress -->
-            <div
-              v-if="downloadingCorrection"
-              class="mt-2"
-            >
+            <div v-if="downloadingCorrection" class="mt-2">
               <div class="flex items-center justify-between mb-1.5">
-                <span class="text-[11px] text-ink-muted font-medium">
-                  Downloading…
-                </span>
+                <span class="text-[11px] text-ink-muted font-medium"> Downloading… </span>
                 <div class="flex items-center gap-2">
                   <span class="text-[11px] text-ink-faint tabular-nums">
                     {{ correctionDownloadProgress.toFixed(0) }}%
@@ -1570,11 +1530,7 @@ function jumpToSection(id: SectionId) {
                     type="button"
                     aria-label="Cancel download"
                     title="Cancel download"
-                    class="flex items-center justify-center w-[18px] h-[18px] rounded-full
-                           bg-raised border border-edge text-ink-faint
-                           transition-colors duration-150
-                           hover:bg-panel hover:text-ink hover:border-edge-strong
-                           active:scale-95"
+                    class="flex items-center justify-center w-[18px] h-[18px] rounded-full bg-raised border border-edge text-ink-faint transition-colors duration-150 hover:bg-panel hover:text-ink hover:border-edge-strong active:scale-95"
                     @click="handleCancelCorrectionDownload"
                   >
                     <svg
@@ -1595,8 +1551,7 @@ function jumpToSection(id: SectionId) {
               </div>
               <div class="h-1 bg-raised shadow-well rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-gradient-to-r from-gold-deep to-gold rounded-full
-                         transition-[width] duration-300 ease-out"
+                  class="h-full bg-gradient-to-r from-gold-deep to-gold rounded-full transition-[width] duration-300 ease-out"
                   :style="{ width: `${correctionDownloadProgress}%` }"
                 />
               </div>
@@ -1644,10 +1599,7 @@ function jumpToSection(id: SectionId) {
                     </div>
                   </div>
                   <button
-                    class="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-md
-                           bg-raised border border-edge text-[10px] font-semibold text-ink-muted
-                           hover:bg-hover hover:text-ink hover:border-edge-strong
-                           transition-all duration-150 active:scale-95"
+                    class="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-raised border border-edge text-[10px] font-semibold text-ink-muted hover:bg-hover hover:text-ink hover:border-edge-strong transition-all duration-150 active:scale-95"
                     :disabled="downloadingCorrection"
                     @click="handleDownloadCorrection(model)"
                   >
@@ -1710,13 +1662,10 @@ function jumpToSection(id: SectionId) {
 
           <!-- Learn from corrections toggle -->
           <div
-            class="flex items-center justify-between p-2.5 rounded-lg
-                   bg-panel border border-edge"
+            class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge"
           >
             <div class="flex flex-col min-w-0 mr-3">
-              <span class="text-[12px] font-semibold text-ink">
-                Learn from corrections
-              </span>
+              <span class="text-[12px] font-semibold text-ink"> Learn from corrections </span>
               <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
                 Automatically learn words when you correct transcriptions
               </span>
@@ -1737,8 +1686,7 @@ function jumpToSection(id: SectionId) {
               <div
                 v-for="entry in vocabularyEntries"
                 :key="entry.wrong"
-                class="group flex items-center gap-2 px-2.5 py-1.5 rounded-lg
-                       bg-panel border border-edge"
+                class="group flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-panel border border-edge"
               >
                 <span class="text-[11px] text-ink-muted truncate">{{ entry.wrong }}</span>
                 <svg
@@ -1758,15 +1706,16 @@ function jumpToSection(id: SectionId) {
                 <span class="text-[11px] font-semibold text-ink truncate">{{ entry.correct }}</span>
                 <span
                   class="ml-auto flex-shrink-0 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider"
-                  :class="entry.source === 'auto'
-                    ? 'bg-gold/10 text-gold/80 border border-gold/15'
-                    : 'bg-raised text-ink-faint border border-edge'"
+                  :class="
+                    entry.source === 'auto'
+                      ? 'bg-gold/10 text-gold/80 border border-gold/15'
+                      : 'bg-raised text-ink-faint border border-edge'
+                  "
                 >
                   {{ entry.source === 'auto' ? 'auto' : 'manual' }}
                 </span>
                 <button
-                  class="flex-shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100
-                         text-ink-faint hover:text-flame transition-all duration-150"
+                  class="flex-shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 text-ink-faint hover:text-flame transition-all duration-150"
                   @click="handleRemoveVocab(entry.wrong)"
                 >
                   <svg
@@ -1791,11 +1740,7 @@ function jumpToSection(id: SectionId) {
           <div class="mt-2">
             <button
               v-if="!showAddVocab"
-              class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg w-full
-                     bg-panel border border-edge border-dashed
-                     text-[11px] text-ink-faint font-medium
-                     hover:bg-raised hover:text-ink-muted hover:border-edge-strong
-                     transition-all duration-150"
+              class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg w-full bg-panel border border-edge border-dashed text-[11px] text-ink-faint font-medium hover:bg-raised hover:text-ink-muted hover:border-edge-strong transition-all duration-150"
               @click="showAddVocab = true"
             >
               <svg
@@ -1814,20 +1759,13 @@ function jumpToSection(id: SectionId) {
               Add word
             </button>
 
-            <div
-              v-else
-              class="flex flex-col gap-2 p-2.5 rounded-lg bg-panel border border-edge"
-            >
+            <div v-else class="flex flex-col gap-2 p-2.5 rounded-lg bg-panel border border-edge">
               <div class="flex gap-2 items-center">
                 <input
                   v-model="vocabWrong"
                   type="text"
                   placeholder="Wrong word"
-                  class="flex-1 min-w-0 px-2 py-1 text-[11px] rounded-md
-                         bg-raised border border-edge text-ink
-                         placeholder:text-ink-faint/50
-                         focus:outline-none focus:border-gold/40
-                         transition-colors duration-150"
+                  class="flex-1 min-w-0 px-2 py-1 text-[11px] rounded-md bg-raised border border-edge text-ink placeholder:text-ink-faint/50 focus:outline-none focus:border-gold/40 transition-colors duration-150"
                   @keydown.enter="handleAddVocab"
                 />
                 <svg
@@ -1848,29 +1786,28 @@ function jumpToSection(id: SectionId) {
                   v-model="vocabCorrect"
                   type="text"
                   placeholder="Correct word"
-                  class="flex-1 min-w-0 px-2 py-1 text-[11px] rounded-md
-                         bg-raised border border-edge text-ink
-                         placeholder:text-ink-faint/50
-                         focus:outline-none focus:border-gold/40
-                         transition-colors duration-150"
+                  class="flex-1 min-w-0 px-2 py-1 text-[11px] rounded-md bg-raised border border-edge text-ink placeholder:text-ink-faint/50 focus:outline-none focus:border-gold/40 transition-colors duration-150"
                   @keydown.enter="handleAddVocab"
                 />
               </div>
               <div class="flex gap-1.5 justify-end">
                 <button
-                  class="px-2 py-0.5 rounded-md text-[10px] font-semibold
-                         text-ink-faint hover:text-ink
-                         transition-colors duration-150"
-                  @click="showAddVocab = false; vocabWrong = ''; vocabCorrect = ''"
+                  class="px-2 py-0.5 rounded-md text-[10px] font-semibold text-ink-faint hover:text-ink transition-colors duration-150"
+                  @click="
+                    showAddVocab = false;
+                    vocabWrong = '';
+                    vocabCorrect = '';
+                  "
                 >
                   Cancel
                 </button>
                 <button
-                  class="px-2.5 py-0.5 rounded-md text-[10px] font-semibold
-                         bg-gold text-canvas hover:bg-gold-hover
-                         transition-all duration-150 active:scale-95
-                         disabled:opacity-40 disabled:cursor-not-allowed"
-                  :disabled="!vocabWrong.trim() || !vocabCorrect.trim() || vocabWrong.trim() === vocabCorrect.trim()"
+                  class="px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-gold text-canvas hover:bg-gold-hover transition-all duration-150 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                  :disabled="
+                    !vocabWrong.trim() ||
+                    !vocabCorrect.trim() ||
+                    vocabWrong.trim() === vocabCorrect.trim()
+                  "
                   @click="handleAddVocab"
                 >
                   Save
@@ -1882,11 +1819,12 @@ function jumpToSection(id: SectionId) {
           <!-- Clear all button -->
           <button
             v-if="vocabularyEntries.length > 0"
-            class="mt-2 flex items-center justify-center gap-1.5 w-full px-2.5 py-1.5
-                   rounded-lg text-[10px] font-semibold transition-all duration-150"
-            :class="confirmClearVocab
-              ? 'bg-flame/15 border border-flame/30 text-flame'
-              : 'bg-panel border border-edge text-ink-faint hover:text-flame hover:border-flame/20 hover:bg-flame/5'"
+            class="mt-2 flex items-center justify-center gap-1.5 w-full px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-150"
+            :class="
+              confirmClearVocab
+                ? 'bg-flame/15 border border-flame/30 text-flame'
+                : 'bg-panel border border-edge text-ink-faint hover:text-flame hover:border-flame/20 hover:bg-flame/5'
+            "
             @click="handleClearVocab"
           >
             {{ confirmClearVocab ? 'Click again to clear all' : 'Clear all words' }}
@@ -1908,20 +1846,19 @@ function jumpToSection(id: SectionId) {
                 stroke-linejoin="round"
               >
                 <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"
+                />
               </svg>
             </div>
             <span class="section-label">General</span>
           </div>
 
           <div
-            class="flex items-center justify-between p-2.5 rounded-lg
-                   bg-panel border border-edge"
+            class="flex items-center justify-between p-2.5 rounded-lg bg-panel border border-edge"
           >
             <div class="flex flex-col min-w-0 mr-3">
-              <span class="text-[12px] font-semibold text-ink">
-                Launch at login
-              </span>
+              <span class="text-[12px] font-semibold text-ink"> Launch at login </span>
               <span class="text-[10px] text-ink-faint leading-snug mt-0.5">
                 Start Magpie when you log in
               </span>
@@ -1936,12 +1873,10 @@ function jumpToSection(id: SectionId) {
           </div>
           <button
             v-if="launchAtLoginStatus === 'requiresApproval'"
-            class="text-[10px] text-amber-400 mt-1.5 px-1 text-left
-                   hover:underline cursor-pointer"
+            class="text-[10px] text-amber-400 mt-1.5 px-1 text-left hover:underline cursor-pointer"
             @click="openLoginItemsSettings()"
           >
-            Magpie needs approval in System Settings → Login Items.
-            Click to open.
+            Magpie needs approval in System Settings → Login Items. Click to open.
           </button>
         </section>
 
@@ -1986,7 +1921,9 @@ function jumpToSection(id: SectionId) {
   background: var(--color-raised);
   border: 1px solid var(--color-edge);
   color: var(--color-ink);
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .search-input::placeholder {
@@ -2094,7 +2031,9 @@ function jumpToSection(id: SectionId) {
   font-size: 12px;
   font-weight: 500;
   color: var(--color-ink-muted);
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
   cursor: pointer;
 }
 

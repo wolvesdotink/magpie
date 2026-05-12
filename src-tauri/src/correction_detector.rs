@@ -48,11 +48,7 @@ pub fn start_detection(pasted_text: String, state: Arc<AppState>, app: AppHandle
         });
 }
 
-fn run_detection(
-    pasted_text: &str,
-    state: &Arc<AppState>,
-    app: &AppHandle,
-) -> Result<(), String> {
+fn run_detection(pasted_text: &str, state: &Arc<AppState>, app: &AppHandle) -> Result<(), String> {
     // Wait for paste to settle
     std::thread::sleep(Duration::from_millis(SETTLE_DELAY_MS));
 
@@ -193,17 +189,14 @@ fn diff_for_corrections(original: &str, modified: &str) -> Vec<(String, String)>
     #[derive(Debug)]
     enum Op {
         Match,
-        Delete(usize),  // index in orig_words
-        Insert(usize),  // index in mod_words
+        Delete(usize), // index in orig_words
+        Insert(usize), // index in mod_words
     }
 
     let mut ops = Vec::new();
 
     while i > 0 || j > 0 {
-        if i > 0
-            && j > 0
-            && orig_words[i - 1].to_lowercase() == mod_words[j - 1].to_lowercase()
-        {
+        if i > 0 && j > 0 && orig_words[i - 1].to_lowercase() == mod_words[j - 1].to_lowercase() {
             ops.push(Op::Match);
             i -= 1;
             j -= 1;
@@ -263,15 +256,16 @@ mod tests {
             "Hello Marcel nice to meet you",
         );
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0], ("Marshal".to_string(), "Marcel".to_string()));
+        assert_eq!(
+            corrections[0],
+            ("Marshal".to_string(), "Marcel".to_string())
+        );
     }
 
     #[test]
     fn test_diff_multiple_substitutions() {
-        let corrections = diff_for_corrections(
-            "I use cubernetes and dok",
-            "I use Kubernetes and Docker",
-        );
+        let corrections =
+            diff_for_corrections("I use cubernetes and dok", "I use Kubernetes and Docker");
         assert_eq!(corrections.len(), 2);
         assert!(corrections.contains(&("cubernetes".to_string(), "Kubernetes".to_string())));
         assert!(corrections.contains(&("dok".to_string(), "Docker".to_string())));
@@ -279,41 +273,33 @@ mod tests {
 
     #[test]
     fn test_diff_no_changes() {
-        let corrections = diff_for_corrections(
-            "Hello world",
-            "Hello world",
-        );
+        let corrections = diff_for_corrections("Hello world", "Hello world");
         assert!(corrections.is_empty());
     }
 
     #[test]
     fn test_diff_insertion_ignored() {
         // Pure insertions should not be treated as corrections
-        let corrections = diff_for_corrections(
-            "Hello world",
-            "Hello beautiful world",
-        );
+        let corrections = diff_for_corrections("Hello world", "Hello beautiful world");
         assert!(corrections.is_empty());
     }
 
     #[test]
     fn test_diff_deletion_ignored() {
         // Pure deletions should not be treated as corrections
-        let corrections = diff_for_corrections(
-            "Hello beautiful world",
-            "Hello world",
-        );
+        let corrections = diff_for_corrections("Hello beautiful world", "Hello world");
         assert!(corrections.is_empty());
     }
 
     #[test]
     fn test_diff_with_punctuation() {
-        let corrections = diff_for_corrections(
-            "Hello Marshal, how are you?",
-            "Hello Marcel, how are you?",
-        );
+        let corrections =
+            diff_for_corrections("Hello Marshal, how are you?", "Hello Marcel, how are you?");
         assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0], ("Marshal".to_string(), "Marcel".to_string()));
+        assert_eq!(
+            corrections[0],
+            ("Marshal".to_string(), "Marcel".to_string())
+        );
     }
 
     #[test]

@@ -9,8 +9,7 @@ pub fn models_dir() -> Result<PathBuf> {
         .context("Failed to determine app data directory")?;
 
     let models_dir = proj_dirs.data_dir().join("models");
-    std::fs::create_dir_all(&models_dir)
-        .context("Failed to create models directory")?;
+    std::fs::create_dir_all(&models_dir).context("Failed to create models directory")?;
 
     Ok(models_dir)
 }
@@ -42,8 +41,7 @@ pub fn list_downloaded_models() -> Result<Vec<String>> {
 pub fn delete_model(filename: &str) -> Result<()> {
     let path = model_path(filename)?;
     if path.exists() {
-        std::fs::remove_file(&path)
-            .context(format!("Failed to delete model: {}", filename))?;
+        std::fs::remove_file(&path).context(format!("Failed to delete model: {}", filename))?;
     }
     Ok(())
 }

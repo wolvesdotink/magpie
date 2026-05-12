@@ -4,14 +4,14 @@ Branded assets for the Magpie macOS DMG installer.
 
 ## Files
 
-| file | role |
-| --- | --- |
-| `dmg-background.svg` | single source of truth for the installer background design |
-| `dmg-background.png` | rendered @1x (660×400) — used by Finder on non-retina displays |
-| `dmg-background@2x.png` | rendered @2x (1320×800) — used by Finder on retina displays |
-| `dmg-background.tiff` | multi-rep TIFF combining both PNGs — what `create-dmg` actually consumes |
-| `volume-icon.icns` | optional custom volume icon shown when the DMG is mounted (falls back to `src-tauri/icons/icon.icns` if absent) |
-| `build-assets.sh` | regenerates the PNGs + TIFF from the SVG |
+| file                    | role                                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `dmg-background.svg`    | single source of truth for the installer background design                                                      |
+| `dmg-background.png`    | rendered @1x (660×400) — used by Finder on non-retina displays                                                  |
+| `dmg-background@2x.png` | rendered @2x (1320×800) — used by Finder on retina displays                                                     |
+| `dmg-background.tiff`   | multi-rep TIFF combining both PNGs — what `create-dmg` actually consumes                                        |
+| `volume-icon.icns`      | optional custom volume icon shown when the DMG is mounted (falls back to `src-tauri/icons/icon.icns` if absent) |
+| `build-assets.sh`       | regenerates the PNGs + TIFF from the SVG                                                                        |
 
 ## Editing the design
 

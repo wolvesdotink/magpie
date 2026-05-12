@@ -194,10 +194,7 @@ pub async fn download_model(
             .await
             {
                 Ok(()) => {
-                    log::info!(
-                        "CoreML encoder unpacked at {}",
-                        encoder_dest.display()
-                    );
+                    log::info!("CoreML encoder unpacked at {}", encoder_dest.display());
                 }
                 Err(DownloadError::Cancelled) => {
                     // Cancellation during encoder fetch: also remove the
@@ -263,7 +260,9 @@ pub async fn download_encoder_only(
 
 fn build_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(constants::DOWNLOAD_CONNECT_TIMEOUT_SECS))
+        .connect_timeout(Duration::from_secs(
+            constants::DOWNLOAD_CONNECT_TIMEOUT_SECS,
+        ))
         .read_timeout(Duration::from_secs(constants::DOWNLOAD_READ_TIMEOUT_SECS))
         .build()
         .context("Failed to create HTTP client")
@@ -318,8 +317,8 @@ async fn fetch_and_unpack_encoder(
         } else {
             0.0
         };
-        let scaled_pct = ggml_progress_share * 100.0
-            + encoder_pct * (1.0 - ggml_progress_share) * 100.0;
+        let scaled_pct =
+            ggml_progress_share * 100.0 + encoder_pct * (1.0 - ggml_progress_share) * 100.0;
 
         if (scaled_pct - last_progress_pct) >= 1.0 {
             last_progress_pct = scaled_pct;
@@ -351,7 +350,10 @@ async fn fetch_and_unpack_encoder(
         .context("Encoder destination has no parent directory")?;
     let temp_dir = parent.join(format!(
         ".{}.unpacking",
-        dest_dir.file_name().and_then(|n| n.to_str()).unwrap_or("encoder")
+        dest_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("encoder")
     ));
     if temp_dir.exists() {
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;

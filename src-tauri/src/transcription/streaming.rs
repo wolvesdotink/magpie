@@ -119,11 +119,7 @@ async fn run_loop(
             continue;
         }
 
-        let language = state
-            .settings
-            .lock()
-            .ok()
-            .and_then(|s| s.language.clone());
+        let language = state.settings.lock().ok().and_then(|s| s.language.clone());
 
         if partial_cancel.is_cancelled() {
             break;

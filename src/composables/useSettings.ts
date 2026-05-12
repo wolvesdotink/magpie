@@ -1,4 +1,4 @@
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted } from 'vue';
 import {
   getSettings,
   updateSettings,
@@ -12,20 +12,18 @@ import {
   type ModelInfo,
   type CorrectionModelInfo,
   type LaunchAtLoginStatus,
-} from "@/lib/commands";
-import { settingToCode, codeToSetting } from "@/lib/languages";
+} from '@/lib/commands';
+import { settingToCode, codeToSetting } from '@/lib/languages';
 
 export function useSettings() {
   const settings = ref<UserSettings | null>(null);
   const models = ref<ModelInfo[]>([]);
   const correctionModels = ref<CorrectionModelInfo[]>([]);
   const loading = ref(true);
-  const launchAtLoginStatus = ref<LaunchAtLoginStatus>("notRegistered");
+  const launchAtLoginStatus = ref<LaunchAtLoginStatus>('notRegistered');
 
   /** Current language as a UI code ("auto", "en", "de", …) */
-  const currentLanguageCode = computed(() =>
-    settingToCode(settings.value?.language ?? null),
-  );
+  const currentLanguageCode = computed(() => settingToCode(settings.value?.language ?? null));
 
   /** Whether the currently selected model is English-only */
   const isEnglishOnlyModel = computed(() => {
@@ -48,14 +46,14 @@ export function useSettings() {
         getSettings(),
         getAvailableModels(),
         getAvailableCorrectionModels(),
-        getLaunchAtLoginStatus().catch(() => "notRegistered" as const),
+        getLaunchAtLoginStatus().catch(() => 'notRegistered' as const),
       ]);
       settings.value = s;
       models.value = m;
       correctionModels.value = cm;
       launchAtLoginStatus.value = las;
     } catch (e) {
-      console.error("Failed to load settings:", e);
+      console.error('Failed to load settings:', e);
     } finally {
       loading.value = false;
     }
@@ -67,7 +65,7 @@ export function useSettings() {
     try {
       await updateSettings(settings.value);
     } catch (e) {
-      console.error("Failed to save settings:", e);
+      console.error('Failed to save settings:', e);
     }
   }
 
@@ -79,9 +77,7 @@ export function useSettings() {
   }
 
   /** Update activation mode */
-  async function updateActivationMode(
-    mode: "holdFn" | "tapFn" | "doubleTapFn" | "shortcut",
-  ) {
+  async function updateActivationMode(mode: 'holdFn' | 'tapFn' | 'doubleTapFn' | 'shortcut') {
     if (!settings.value) return;
     settings.value = { ...settings.value, activationMode: mode };
     await persist();
@@ -114,12 +110,11 @@ export function useSettings() {
     try {
       launchAtLoginStatus.value = await getLaunchAtLoginStatus();
     } catch (e) {
-      console.error("Failed to read launch-at-login status:", e);
+      console.error('Failed to read launch-at-login status:', e);
       return;
     }
     const actuallyOn =
-      launchAtLoginStatus.value === "enabled" ||
-      launchAtLoginStatus.value === "requiresApproval";
+      launchAtLoginStatus.value === 'enabled' || launchAtLoginStatus.value === 'requiresApproval';
     if (settings.value && settings.value.autoStart !== actuallyOn) {
       settings.value = { ...settings.value, autoStart: actuallyOn };
     }

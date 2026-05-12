@@ -179,8 +179,7 @@ pub fn start_fn_key_monitor(
                         // port isn't available yet, flag for watchdog restart.
                         if matches!(
                             event_type,
-                            CGEventType::TapDisabledByTimeout
-                                | CGEventType::TapDisabledByUserInput
+                            CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput
                         ) {
                             log::warn!(
                                 "CGEventTap disabled by macOS: {:?} — attempting re-enable",

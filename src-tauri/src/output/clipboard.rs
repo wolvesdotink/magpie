@@ -3,9 +3,7 @@ use arboard::Clipboard;
 
 /// Get the current clipboard text content (if any)
 pub fn get_clipboard_text() -> Option<String> {
-    Clipboard::new()
-        .ok()
-        .and_then(|mut cb| cb.get_text().ok())
+    Clipboard::new().ok().and_then(|mut cb| cb.get_text().ok())
 }
 
 /// Set clipboard text content

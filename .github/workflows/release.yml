@@ -70,7 +70,7 @@ name: release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - 'v*.*.*'
   workflow_dispatch:
 
 # Cancel in-flight runs on the same ref so a quick re-tag doesn't queue duplicates.

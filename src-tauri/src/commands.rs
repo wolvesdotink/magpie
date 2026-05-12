@@ -5,7 +5,10 @@ use tauri::{AppHandle, Manager, State};
 use crate::audio;
 use crate::correction;
 use crate::correction_detector;
-use crate::events::{self, event_names, AppStatePayload, AudioAmplitudePayload, PermissionsPayload, TranscriptionError, TranscriptionResult};
+use crate::events::{
+    self, event_names, AppStatePayload, AudioAmplitudePayload, PermissionsPayload,
+    TranscriptionError, TranscriptionResult,
+};
 use crate::hotkey;
 use crate::models::{downloader, registry, storage};
 use crate::output;
@@ -57,11 +60,7 @@ pub async fn start_recording(
     // render as a live caption. Skip if no backend is loaded — there's
     // nothing to decode against — or if the user has disabled the live
     // preview in Settings (default off; final-on-stop is unaffected).
-    let backend_present = state
-        .backend
-        .lock()
-        .map(|g| g.is_some())
-        .unwrap_or(false);
+    let backend_present = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
     let streaming_enabled = state
         .settings
         .lock()
@@ -95,7 +94,9 @@ pub async fn start_recording(
                 events::emit_event(
                     &emitter_app,
                     event_names::AUDIO_AMPLITUDE,
-                    AudioAmplitudePayload { amplitude: normalized },
+                    AudioAmplitudePayload {
+                        amplitude: normalized,
+                    },
                 );
 
                 std::thread::sleep(std::time::Duration::from_millis(50));
@@ -126,10 +127,7 @@ pub async fn start_recording(
 }
 
 #[tauri::command]
-pub async fn stop_recording(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
+pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     if !state.is_recording() {
         return Err("Not recording".to_string());
     }
@@ -242,7 +240,12 @@ pub async fn stop_recording(
                         (settings.filler_words.clone(), settings.remove_fillers)
                     };
 
-                    let text = postprocess::postprocess(&raw_text, &filler_words, remove_fillers, &vocab_replacements);
+                    let text = postprocess::postprocess(
+                        &raw_text,
+                        &filler_words,
+                        remove_fillers,
+                        &vocab_replacements,
+                    );
 
                     // Self-correction cleanup (if enabled)
                     let text = {
@@ -253,11 +256,7 @@ pub async fn stop_recording(
 
                         if self_correction_enabled && !text.is_empty() {
                             tray::set_tray_status(&app_clone, "Magpie \u{2014} Cleaning up...");
-                            events::emit_event(
-                                &app_clone,
-                                event_names::CORRECTION_STARTED,
-                                (),
-                            );
+                            events::emit_event(&app_clone, event_names::CORRECTION_STARTED, ());
 
                             let backend_guard = state_arc.llama_backend.lock().unwrap();
                             let model_guard = state_arc.correction_model.lock().unwrap();
@@ -288,17 +287,12 @@ pub async fn stop_recording(
                                         text
                                     }
                                     Err(e) => {
-                                        log::warn!(
-                                            "Correction failed, using original: {}",
-                                            e
-                                        );
+                                        log::warn!("Correction failed, using original: {}", e);
                                         text
                                     }
                                 }
                             } else {
-                                log::debug!(
-                                    "Self-correction enabled but no model loaded"
-                                );
+                                log::debug!("Self-correction enabled but no model loaded");
                                 text
                             }
                         } else {
@@ -336,10 +330,7 @@ pub async fn stop_recording(
                         events::emit_event(
                             &app_clone,
                             event_names::TRANSCRIPTION_COMPLETE,
-                            TranscriptionResult {
-                                text,
-                                duration_ms,
-                            },
+                            TranscriptionResult { text, duration_ms },
                         );
                     } else {
                         log::info!("Transcription produced empty text after post-processing");
@@ -522,11 +513,7 @@ fn unregister_escape_shortcut(app: &AppHandle) {
 
 #[tauri::command]
 pub fn get_app_state(state: State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = state
-        .backend
-        .lock()
-        .map(|g| g.is_some())
-        .unwrap_or(false);
+    let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
     let last_transcription = state.last_transcription.lock().unwrap().clone();
 
     AppStatePayload {
@@ -558,8 +545,8 @@ pub async fn download_model(
     state: State<'_, Arc<AppState>>,
     model_id: String,
 ) -> Result<(), String> {
-    let model_info = registry::find_model(&model_id)
-        .ok_or_else(|| format!("Unknown model: {}", model_id))?;
+    let model_info =
+        registry::find_model(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
     let encoder = model_info
         .encoder_url
@@ -641,10 +628,7 @@ pub async fn download_model(
 /// returns Ok even if no download is currently registered (covers the race
 /// between cancel and completion).
 #[tauri::command]
-pub fn cancel_download(
-    state: State<'_, Arc<AppState>>,
-    model_id: String,
-) -> Result<(), String> {
+pub fn cancel_download(state: State<'_, Arc<AppState>>, model_id: String) -> Result<(), String> {
     let active = state.active_downloads.lock().unwrap();
     if let Some(token) = active.get(&model_id) {
         token.cancel();
@@ -661,11 +645,10 @@ pub fn select_model(
     state: State<'_, Arc<AppState>>,
     model_id: String,
 ) -> Result<(), String> {
-    let model_info = registry::find_model(&model_id)
-        .ok_or_else(|| format!("Unknown model: {}", model_id))?;
+    let model_info =
+        registry::find_model(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
-    let path = storage::model_path(&model_info.filename)
-        .map_err(|e| e.to_string())?;
+    let path = storage::model_path(&model_info.filename).map_err(|e| e.to_string())?;
 
     if !path.exists() {
         return Err(format!("Model {} is not downloaded", model_id));
@@ -694,8 +677,8 @@ pub fn delete_model_file(
     state: State<'_, Arc<AppState>>,
     model_id: String,
 ) -> Result<(), String> {
-    let model_info = registry::find_model(&model_id)
-        .ok_or_else(|| format!("Unknown model: {}", model_id))?;
+    let model_info =
+        registry::find_model(&model_id).ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
     storage::delete_model(&model_info.filename).map_err(|e| e.to_string())?;
 
@@ -738,8 +721,8 @@ fn load_model_internal(
     path: &std::path::Path,
     model_id: &str,
 ) -> Result<(), String> {
-    let (backend, self_test) = crate::load_with_self_test(path)
-        .map_err(|e| format!("Failed to load model: {}", e))?;
+    let (backend, self_test) =
+        crate::load_with_self_test(path).map_err(|e| format!("Failed to load model: {}", e))?;
 
     if let Err(e) = self_test {
         log::warn!(
@@ -766,17 +749,17 @@ fn load_model_internal(
     tray::set_tray_status(app, "Magpie — Ready");
 
     // Emit state change
-    events::emit_event(app, event_names::APP_STATE_CHANGED, get_app_state_payload(state));
+    events::emit_event(
+        app,
+        event_names::APP_STATE_CHANGED,
+        get_app_state_payload(state),
+    );
 
     Ok(())
 }
 
 fn get_app_state_payload(state: &State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = state
-        .backend
-        .lock()
-        .map(|g| g.is_some())
-        .unwrap_or(false);
+    let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
     let last_transcription = state.last_transcription.lock().unwrap().clone();
 
     AppStatePayload {
@@ -822,7 +805,12 @@ pub async fn run_repair_active_model(app: &AppHandle) {
         return;
     }
 
-    let model_id = match state.settings.lock().ok().and_then(|s| s.selected_model.clone()) {
+    let model_id = match state
+        .settings
+        .lock()
+        .ok()
+        .and_then(|s| s.selected_model.clone())
+    {
         Some(id) => id,
         None => {
             log::warn!("Repair Active Model: no model selected");
@@ -891,20 +879,44 @@ pub async fn run_repair_active_model(app: &AppHandle) {
                     e
                 );
             } else {
-                log::info!("Repair Active Model: removed stale {}", broken_dir.display());
+                log::info!(
+                    "Repair Active Model: removed stale {}",
+                    broken_dir.display()
+                );
             }
         }
     }
 
-    log::info!("Repairing model '{}' — re-downloading CoreML encoder", model_id);
-    match downloader::download_encoder_only(app, &model_id, &encoder_url, encoder_size, &encoder_dir, None).await {
+    log::info!(
+        "Repairing model '{}' — re-downloading CoreML encoder",
+        model_id
+    );
+    match downloader::download_encoder_only(
+        app,
+        &model_id,
+        &encoder_url,
+        encoder_size,
+        &encoder_dir,
+        None,
+    )
+    .await
+    {
         Ok(()) => {
-            log::info!("Repair Active Model: encoder restored for '{}'; reloading backend", model_id);
+            log::info!(
+                "Repair Active Model: encoder restored for '{}'; reloading backend",
+                model_id
+            );
             // Reuse the same idle-aware reload helper used by the startup
             // backfill path. Because we early-returned on busy state above,
             // the reload runs synchronously here. The reload itself runs the
             // self-test and re-quarantines the encoder if it still fails.
-            crate::reload_backend_after_backfill_public(app.clone(), state.inner().clone(), model_id, model_path).await;
+            crate::reload_backend_after_backfill_public(
+                app.clone(),
+                state.inner().clone(),
+                model_id,
+                model_path,
+            )
+            .await;
         }
         Err(e) => {
             log::error!("Repair Active Model: encoder download failed: {}", e);
@@ -938,13 +950,17 @@ pub fn request_microphone_permission() -> bool {
 
 #[tauri::command]
 pub fn open_microphone_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.suppress_hide.store(true, std::sync::atomic::Ordering::SeqCst);
+    state
+        .suppress_hide
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     crate::permissions::open_microphone_settings().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn open_accessibility_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.suppress_hide.store(true, std::sync::atomic::Ordering::SeqCst);
+    state
+        .suppress_hide
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     crate::permissions::open_accessibility_settings().map_err(|e| e.to_string())
 }
 
@@ -959,7 +975,9 @@ pub fn request_input_monitoring_permission() -> bool {
 
 #[tauri::command]
 pub fn open_input_monitoring_settings(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.suppress_hide.store(true, std::sync::atomic::Ordering::SeqCst);
+    state
+        .suppress_hide
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     crate::permissions::open_input_monitoring_settings().map_err(|e| e.to_string())
 }
 
@@ -1062,11 +1080,7 @@ pub fn update_global_shortcut(
     // Best-effort unregister of the previously-registered shortcut so we don't
     // leak a stale binding when the user switches combinations. Errors are
     // ignored (it might not be registered, or the binding might be stale).
-    let old_str_opt = state
-        .current_shortcut
-        .lock()
-        .ok()
-        .and_then(|g| g.clone());
+    let old_str_opt = state.current_shortcut.lock().ok().and_then(|g| g.clone());
     if let Some(old_str) = old_str_opt {
         if let Ok(old) = old_str.parse::<Shortcut>() {
             let _ = app.global_shortcut().unregister(old);
@@ -1240,7 +1254,10 @@ pub async fn download_correction_model(
     let path = match result {
         Ok(p) => p,
         Err(downloader::DownloadError::Cancelled) => {
-            log::info!("Correction-model download of {} cancelled by user", model_id);
+            log::info!(
+                "Correction-model download of {} cancelled by user",
+                model_id
+            );
             events::emit_event(
                 &app,
                 event_names::MODEL_DOWNLOAD_CANCELLED,
@@ -1341,7 +1358,11 @@ pub fn delete_correction_model_file(
     }
 
     // Emit state change
-    events::emit_event(&app, event_names::APP_STATE_CHANGED, get_app_state_payload(&state));
+    events::emit_event(
+        &app,
+        event_names::APP_STATE_CHANGED,
+        get_app_state_payload(&state),
+    );
 
     Ok(())
 }
