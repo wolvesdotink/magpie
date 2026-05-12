@@ -17,7 +17,40 @@ use crate::transcription::backend::{CancellationToken, TranscriptionBackend};
 use crate::transcription::streaming::StreamingHandle;
 use crate::vocabulary::Vocabulary;
 
-/// Shared application state managed by Tauri
+/// Shared application state managed by Tauri.
+///
+/// # Lock-ordering protocol
+///
+/// Holding more than one [`AppState`] mutex at the same time is rare but
+/// occasionally necessary (e.g. settings save while writing a model path).
+/// When it happens, locks MUST be acquired in the order listed below.
+/// Releasing order is unconstrained; acquisition order alone prevents
+/// classic AB-BA deadlocks.
+///
+/// 1. `settings`
+/// 2. `backend`, `current_model_path` (always together when both are
+///    held; treated as one rank because the backend swap is conceptually
+///    a path-and-loaded-object pair)
+/// 3. `audio_buffer`
+/// 4. `capture_sample_rate`
+/// 5. `active_stream`
+/// 6. `streaming_handle`
+/// 7. `last_transcription`
+/// 8. `vocabulary`
+/// 9. `llama_backend`, `correction_model`, `current_correction_model_path`
+///    (locked together when reloading correction models)
+/// 10. `active_downloads`
+/// 11. `pending_reload`
+/// 12. `fn_key_monitor`, `recording_tx`, `current_shortcut` (orchestration
+///     handles; rarely held with anything else)
+///
+/// The atomic fields (`recording`, `processing`, `amplitude_rms`,
+/// `suppress_hide`) are lock-free and have no ordering requirement.
+///
+/// If you find yourself needing to acquire two locks in the wrong order:
+/// (a) extract the value from the higher-rank lock into a local first,
+/// (b) drop that guard before acquiring the lower-rank lock, or
+/// (c) update this comment with a justification before merging.
 pub struct AppState {
     /// Whether we are currently recording audio
     pub recording: AtomicBool,
