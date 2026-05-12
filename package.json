@@ -30,20 +30,7 @@
     "rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test": "bun run rust:test",
-    "verify": "bun run rust:fmt:check && bun run rust:clippy && bun run typecheck && bun run lint && bun run format:check && bun run rust:test",
-    "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.{js,ts,vue}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,yml,yaml,html,css}": [
-      "prettier --write"
-    ],
-    "src-tauri/**/*.rs": [
-      "cargo fmt --manifest-path src-tauri/Cargo.toml --"
-    ]
+    "verify": "bun run rust:fmt:check && bun run rust:clippy && bun run typecheck && bun run lint && bun run format:check && bun run rust:test"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -65,8 +52,6 @@
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-vue": "^9.32.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.4.1",
     "prettier": "^3.4.2",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.20.0",
