@@ -88,6 +88,12 @@ thiserror = "2"
 regex = "1"
 num_cpus = "1"
 
+# parking_lot replaces std::sync::Mutex / RwLock with implementations that
+# do not poison on panic, lock faster on contention, and offer RwLock with
+# the same ergonomics as Mutex. Adopted in Phase 2 of the architecture
+# refactor; see `state::AppState` for the lock-ordering protocol.
+parking_lot = "0.12"
+
 # Structured logging. Adopted in Phase 0 of the architecture refactor and
 # used by all new code. `tracing-log` keeps the existing `log::*` calls
 # (and ecosystem crates like whisper-rs / llama-cpp-2 that emit via `log`)

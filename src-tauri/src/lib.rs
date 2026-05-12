@@ -32,7 +32,7 @@ use tauri::Manager;
 use tokio::sync::mpsc;
 
 use crate::recording::RecordingCommand;
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 
 /// Default global shortcut used when the user has not configured a custom one.
 pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Shift+Space";
@@ -136,11 +136,7 @@ pub fn run() {
                         let state = window.app_handle().state::<Arc<AppState>>();
 
                         // During setup the window shouldn't auto-hide on blur
-                        let in_setup = state
-                            .settings
-                            .lock()
-                            .map(|s| !s.setup_complete)
-                            .unwrap_or(false);
+                        let in_setup = !lock_or_recover(&state.settings).setup_complete;
 
                         // One-shot suppression (e.g. opening System Preferences)
                         let suppressed = state.suppress_hide.swap(false, Ordering::SeqCst);
@@ -235,7 +231,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // sync that back so the UI reflects reality.
     #[cfg(target_os = "macos")]
     {
-        let stored = state.settings.lock().map(|s| s.auto_start).unwrap_or(false);
+        let stored = lock_or_recover(&state.settings).auto_start;
         let actual = launch_at_login::status();
         let actual_enabled = matches!(
             actual,
@@ -248,10 +244,9 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 stored,
                 actual
             );
-            if let Ok(mut s) = state.settings.lock() {
-                s.auto_start = actual_enabled;
-                let _ = s.save();
-            }
+            let mut s = lock_or_recover(&state.settings);
+            s.auto_start = actual_enabled;
+            let _ = s.save();
         }
     }
 
@@ -261,7 +256,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // surfacing the window is enough — without this, a returning user who
     // revoked a permission would press Fn and get no signal.
     {
-        let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
+        let has_model = lock_or_recover(&state.backend).is_some();
         let perms = commands::check_permissions();
         let missing_perms = !perms.microphone || !perms.accessibility || !perms.input_monitoring;
         if !has_model || missing_perms {
@@ -287,9 +282,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let (tx, mut rx) = mpsc::unbounded_channel::<RecordingCommand>();
 
     // Store the sender so restart_fn_key_monitor can clone it later
-    if let Ok(mut guard) = state.recording_tx.lock() {
-        *guard = Some(tx.clone());
-    }
+    *lock_or_recover(&state.recording_tx) = Some(tx.clone());
 
     // Proactively request Input Monitoring permission at startup. On first
     // launch this triggers the macOS TCC prompt AND registers the app in
@@ -311,11 +304,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // Start Fn key monitor — pass channel sender directly (no Tauri events)
     let app_handle = app.handle().clone();
-    let activation_mode = state
-        .settings
-        .lock()
-        .map(|s| s.activation_mode.clone())
-        .unwrap_or_default();
+    let activation_mode = lock_or_recover(&state.settings).activation_mode.clone();
     let hotkey_tx = tx.clone();
     let (monitor_handle, monitor_ok) =
         hotkey::start_fn_key_monitor(app_handle.clone(), hotkey_tx, activation_mode);
@@ -325,9 +314,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
              Banner will direct the user to System Settings."
         );
     }
-    if let Ok(mut guard) = state.fn_key_monitor.lock() {
-        *guard = Some(monitor_handle);
-    }
+    *lock_or_recover(&state.fn_key_monitor) = Some(monitor_handle);
 
     // Fn monitor watchdog. The tap callback tries to re-enable itself when
     // macOS disables the tap (see hotkey.rs). If that fast-path fails (e.g.
@@ -349,11 +336,9 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             sleep(Duration::from_secs(10)).await;
 
             let state = watchdog_app.state::<Arc<AppState>>();
-            let needs_restart = state
-                .fn_key_monitor
-                .lock()
-                .ok()
-                .and_then(|guard| guard.as_ref().map(|h| h.needs_restart()))
+            let needs_restart = lock_or_recover(&state.fn_key_monitor)
+                .as_ref()
+                .map(|h| h.needs_restart())
                 .unwrap_or(false);
 
             if needs_restart {
@@ -479,13 +464,7 @@ pub(crate) fn load_with_self_test(path: &std::path::Path) -> LoadOutcome {
 /// that introduce CoreML acceleration over models downloaded by an older
 /// build.
 fn try_load_last_model(state: &Arc<AppState>, app_handle: &tauri::AppHandle) {
-    let selected = match state.settings.lock() {
-        Ok(settings) => settings.selected_model.clone(),
-        Err(e) => {
-            log::error!("Settings mutex poisoned in try_load_last_model: {}", e);
-            return;
-        }
-    };
+    let selected = lock_or_recover(&state.settings).selected_model.clone();
 
     let (model_id, path, info) = match selected {
         Some(id) => {
@@ -516,10 +495,9 @@ fn try_load_last_model(state: &Arc<AppState>, app_handle: &tauri::AppHandle) {
                      Clearing selection to prevent crash loop.",
                     model_id
                 );
-                if let Ok(mut settings) = state.settings.lock() {
-                    settings.selected_model = None;
-                    let _ = settings.save();
-                }
+                let mut settings = lock_or_recover(&state.settings);
+                settings.selected_model = None;
+                let _ = settings.save();
             } else {
                 log::error!("Failed to auto-load model {}: {}", model_id, e);
             }
@@ -536,12 +514,8 @@ fn try_load_last_model(state: &Arc<AppState>, app_handle: &tauri::AppHandle) {
         );
     }
 
-    if let Ok(mut slot) = state.backend.lock() {
-        *slot = Some(backend);
-    }
-    if let Ok(mut model_path) = state.current_model_path.lock() {
-        *model_path = Some(path.clone());
-    }
+    *lock_or_recover(&state.backend) = Some(backend);
+    *lock_or_recover(&state.current_model_path) = Some(path.clone());
     log::info!("Auto-loaded model: {}", model_id);
 
     // CoreML encoder backfill — non-blocking. See function comment.
@@ -638,9 +612,7 @@ async fn reload_backend_after_backfill(
             "Encoder ready for {}; deferring backend reload until idle",
             model_id
         );
-        if let Ok(mut slot) = state.pending_reload.lock() {
-            *slot = Some((model_id, path));
-        }
+        *lock_or_recover(&state.pending_reload) = Some((model_id, path));
         return;
     }
 
@@ -660,12 +632,8 @@ async fn reload_backend_after_backfill(
         log::warn!("Self-test for {} after backfill returned: {}", model_id, e);
     }
 
-    if let Ok(mut slot) = state.backend.lock() {
-        *slot = Some(backend);
-    }
-    if let Ok(mut model_path) = state.current_model_path.lock() {
-        *model_path = Some(path);
-    }
+    *lock_or_recover(&state.backend) = Some(backend);
+    *lock_or_recover(&state.current_model_path) = Some(path);
     log::info!("Backend reloaded with CoreML encoder for {}", model_id);
     emit_app_state(&app, &state);
 }
@@ -675,12 +643,7 @@ fn emit_app_state(app: &tauri::AppHandle, state: &Arc<AppState>) {
         recording: state.is_recording(),
         processing: state.is_processing(),
         has_model: true,
-        last_transcription: state
-            .last_transcription
-            .lock()
-            .ok()
-            .map(|g| g.clone())
-            .unwrap_or_default(),
+        last_transcription: lock_or_recover(&state.last_transcription).clone(),
     };
     events::emit_event(app, events::event_names::APP_STATE_CHANGED, payload);
 }
@@ -688,10 +651,7 @@ fn emit_app_state(app: &tauri::AppHandle, state: &Arc<AppState>) {
 /// Public entry point used by `commands.rs::stop_recording` to drain a
 /// deferred backend reload once the recording-and-processing cycle ends.
 pub async fn flush_pending_reload(app: tauri::AppHandle, state: Arc<AppState>) {
-    let pending = match state.pending_reload.lock() {
-        Ok(mut g) => g.take(),
-        Err(_) => return,
-    };
+    let pending = lock_or_recover(&state.pending_reload).take();
     if let Some((model_id, path)) = pending {
         reload_backend_after_backfill(app, state, model_id, path).await;
     }
@@ -738,16 +698,9 @@ fn cleanup_stale_downloads() {
 /// exception escaping the FFI boundary (which `catch_unwind` cannot catch)
 /// aborts only that thread instead of the entire application.
 fn try_load_last_correction_model(state: &Arc<AppState>) {
-    let selected = match state.settings.lock() {
-        Ok(settings) => settings.selected_correction_model.clone(),
-        Err(e) => {
-            log::error!(
-                "Settings mutex poisoned in try_load_last_correction_model: {}",
-                e
-            );
-            return;
-        }
-    };
+    let selected = lock_or_recover(&state.settings)
+        .selected_correction_model
+        .clone();
 
     let (model_id, path) = match selected {
         Some(id) => {
@@ -791,24 +744,17 @@ fn try_load_last_correction_model(state: &Arc<AppState>) {
     match handle.join() {
         Ok(Ok((backend, model))) => {
             // Store the loaded backend + model into shared state.
-            if let Ok(mut bg) = state.llama_backend.lock() {
-                *bg = Some(backend);
-            }
-            if let Ok(mut cm) = state.correction_model.lock() {
-                *cm = Some(model);
-            }
-            if let Ok(mut cp) = state.current_correction_model_path.lock() {
-                *cp = Some(path);
-            }
+            *lock_or_recover(&state.llama_backend) = Some(backend);
+            *lock_or_recover(&state.correction_model) = Some(model);
+            *lock_or_recover(&state.current_correction_model_path) = Some(path);
             log::info!("Auto-loaded correction model: {}", model_id);
         }
         Ok(Err(e)) => {
             // Clean Rust error – model file is likely valid, don't delete it.
             log::error!("Failed to auto-load correction model {}: {}", model_id, e);
-            if let Ok(mut settings) = state.settings.lock() {
-                settings.selected_correction_model = None;
-                let _ = settings.save();
-            }
+            let mut settings = lock_or_recover(&state.settings);
+            settings.selected_correction_model = None;
+            let _ = settings.save();
         }
         Err(_) => {
             // The thread panicked or was aborted (e.g. foreign C++ exception).
@@ -818,10 +764,9 @@ fn try_load_last_correction_model(state: &Arc<AppState>) {
                  Clearing selection to prevent crash loop.",
                 model_id
             );
-            if let Ok(mut settings) = state.settings.lock() {
-                settings.selected_correction_model = None;
-                let _ = settings.save();
-            }
+            let mut settings = lock_or_recover(&state.settings);
+            settings.selected_correction_model = None;
+            let _ = settings.save();
         }
     }
 }
@@ -838,11 +783,7 @@ fn register_global_shortcut(
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
     let state = app.state::<Arc<AppState>>();
-    let custom = state
-        .settings
-        .lock()
-        .ok()
-        .and_then(|s| s.custom_shortcut.clone());
+    let custom = lock_or_recover(&state.settings).custom_shortcut.clone();
     let shortcut_str = custom.unwrap_or_else(|| DEFAULT_SHORTCUT.to_string());
 
     let shortcut: Shortcut = match shortcut_str.parse() {
@@ -868,9 +809,7 @@ fn register_global_shortcut(
             }
         })?;
 
-    if let Ok(mut current) = state.current_shortcut.lock() {
-        *current = Some(shortcut_str);
-    }
+    *lock_or_recover(&state.current_shortcut) = Some(shortcut_str);
 
     Ok(())
 }

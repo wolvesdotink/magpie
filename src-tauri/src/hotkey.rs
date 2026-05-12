@@ -1,7 +1,9 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use parking_lot::Mutex;
 
 use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortRef;
@@ -53,10 +55,8 @@ pub struct FnKeyMonitorHandle {
 impl FnKeyMonitorHandle {
     /// Stop the monitor's run loop. Idempotent — safe to call multiple times.
     pub fn stop(&self) {
-        if let Ok(mut rl) = self.run_loop.lock() {
-            if let Some(run_loop) = rl.take() {
-                run_loop.stop();
-            }
+        if let Some(run_loop) = self.run_loop.lock().take() {
+            run_loop.stop();
         }
     }
 
@@ -185,7 +185,7 @@ pub fn start_fn_key_monitor(
                                 "CGEventTap disabled by macOS: {:?} — attempting re-enable",
                                 event_type
                             );
-                            let port = port_slot_cb.lock().ok().and_then(|g| *g);
+                            let port = *port_slot_cb.lock();
                             match port {
                                 Some(MachPortHandle(port)) => {
                                     // SAFETY: `port` is the mach port of a CGEventTap
@@ -228,10 +228,7 @@ pub fn start_fn_key_monitor(
                             ActivationMode::DoubleTapFn => {
                                 if fn_pressed && !was_pressed {
                                     let now = Instant::now();
-                                    let mut last = match last_tap_time_clone.lock() {
-                                        Ok(guard) => guard,
-                                        Err(poisoned) => poisoned.into_inner(),
-                                    };
+                                    let mut last = last_tap_time_clone.lock();
                                     let is_double_tap = last
                                         .map(|t| now.duration_since(t).as_millis() < 300)
                                         .unwrap_or(false);
@@ -275,9 +272,7 @@ pub fn start_fn_key_monitor(
                     // Store the mach port so the callback can re-enable the tap if
                     // macOS disables it later. Done before `tap.enable()` so the
                     // first disable event has access to the port.
-                    if let Ok(mut guard) = port_slot.lock() {
-                        *guard = Some(MachPortHandle(tap.mach_port.as_concrete_TypeRef()));
-                    }
+                    *port_slot.lock() = Some(MachPortHandle(tap.mach_port.as_concrete_TypeRef()));
 
                     let loop_source = match tap.mach_port.create_runloop_source(0) {
                         Ok(source) => source,
@@ -290,9 +285,7 @@ pub fn start_fn_key_monitor(
                     let run_loop = CFRunLoop::get_current();
 
                     // Store the run loop so external code can stop it
-                    if let Ok(mut slot) = run_loop_slot_clone.lock() {
-                        *slot = Some(run_loop.clone());
-                    }
+                    *run_loop_slot_clone.lock() = Some(run_loop.clone());
 
                     run_loop.add_source(&loop_source, kCFRunLoopCommonModes);
                     tap.enable();

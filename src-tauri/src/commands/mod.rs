@@ -67,17 +67,11 @@ pub async fn start_recording(
     // render as a live caption. Skip if no backend is loaded — there's
     // nothing to decode against — or if the user has disabled the live
     // preview in Settings (default off; final-on-stop is unaffected).
-    let backend_present = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
-    let streaming_enabled = state
-        .settings
-        .lock()
-        .map(|s| s.streaming_preview)
-        .unwrap_or(false);
+    let backend_present = lock_or_recover(&state.backend).is_some();
+    let streaming_enabled = lock_or_recover(&state.settings).streaming_preview;
     if backend_present && streaming_enabled {
         let handle = streaming::spawn_streaming_worker(app.clone(), state_arc.clone());
-        if let Ok(mut slot) = state.streaming_handle.lock() {
-            *slot = Some(handle);
-        }
+        *lock_or_recover(&state.streaming_handle) = Some(handle);
     } else if !backend_present {
         log::debug!("Streaming worker not started: no backend loaded");
     } else {
@@ -152,11 +146,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
     // in-flight whisper.cpp call (via the abort_callback wired in the
     // backend); cancel signals the loop to exit. The 2s timeout bounds
     // the wait if a stuck inference somehow ignores the abort.
-    let streaming_handle = state
-        .streaming_handle
-        .lock()
-        .ok()
-        .and_then(|mut g| g.take());
+    let streaming_handle = lock_or_recover(&state.streaming_handle).take();
     if let Some(h) = streaming_handle {
         h.partial_cancel.cancel();
         h.cancel.cancel();
@@ -224,7 +214,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
         // backend alive until this scope ends. Named `asr_backend` to avoid
         // shadowing inside the correction block below, which has its own
         // `backend` (the LlamaBackend).
-        let asr_backend = state_arc.backend.lock().ok().and_then(|g| g.clone());
+        let asr_backend = lock_or_recover(&state_arc.backend).clone();
         if let Some(asr_backend) = asr_backend {
             // Resample to whatever rate the backend wants (16kHz for whisper.cpp).
             let target_rate = asr_backend.capabilities().sample_rate_hz;
@@ -440,11 +430,7 @@ pub async fn cancel_recording(
     // Tear down the streaming worker. partial_cancel aborts any in-flight
     // whisper.cpp call; cancel signals the loop to exit. 2s timeout bounds
     // the wait if a stuck inference somehow ignores the abort.
-    let streaming_handle = state
-        .streaming_handle
-        .lock()
-        .ok()
-        .and_then(|mut g| g.take());
+    let streaming_handle = lock_or_recover(&state.streaming_handle).take();
     if let Some(h) = streaming_handle {
         h.partial_cancel.cancel();
         h.cancel.cancel();
@@ -520,7 +506,7 @@ fn unregister_escape_shortcut(app: &AppHandle) {
 
 #[tauri::command]
 pub fn get_app_state(state: State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
+    let has_model = lock_or_recover(&state.backend).is_some();
     let last_transcription = lock_or_recover(&state.last_transcription).clone();
 
     AppStatePayload {
@@ -740,17 +726,8 @@ fn load_model_internal(
         );
     }
 
-    {
-        let mut slot = state
-            .backend
-            .lock()
-            .map_err(|e| format!("backend mutex poisoned: {}", e))?;
-        *slot = Some(backend);
-    }
-    {
-        let mut model_path = lock_or_recover(&state.current_model_path);
-        *model_path = Some(path.to_path_buf());
-    }
+    *lock_or_recover(&state.backend) = Some(backend);
+    *lock_or_recover(&state.current_model_path) = Some(path.to_path_buf());
 
     log::info!("Model {} loaded successfully", model_id);
     tray::set_tray_status(app, "Magpie — Ready");
@@ -766,7 +743,7 @@ fn load_model_internal(
 }
 
 fn get_app_state_payload(state: &State<'_, Arc<AppState>>) -> AppStatePayload {
-    let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
+    let has_model = lock_or_recover(&state.backend).is_some();
     let last_transcription = lock_or_recover(&state.last_transcription).clone();
 
     AppStatePayload {
@@ -812,12 +789,7 @@ pub async fn run_repair_active_model(app: &AppHandle) {
         return;
     }
 
-    let model_id = match state
-        .settings
-        .lock()
-        .ok()
-        .and_then(|s| s.selected_model.clone())
-    {
+    let model_id = match lock_or_recover(&state.settings).selected_model.clone() {
         Some(id) => id,
         None => {
             log::warn!("Repair Active Model: no model selected");
@@ -1006,37 +978,22 @@ pub fn restart_fn_key_monitor_inner(
     state: &Arc<AppState>,
 ) -> Result<bool, String> {
     // Stop the existing monitor before starting a new one
-    if let Ok(mut guard) = state.fn_key_monitor.lock() {
-        if let Some(handle) = guard.take() {
-            handle.stop();
-        }
+    if let Some(handle) = lock_or_recover(&state.fn_key_monitor).take() {
+        handle.stop();
     }
 
-    let activation_mode = state
-        .settings
-        .lock()
-        .map(|s| s.activation_mode.clone())
-        .unwrap_or_default();
+    let activation_mode = lock_or_recover(&state.settings).activation_mode.clone();
 
     // Clone the recording command sender for the new monitor
-    let tx = match state.recording_tx.lock() {
-        Ok(guard) => match guard.as_ref() {
-            Some(tx) => tx.clone(),
-            None => {
-                return Err(
-                    "Cannot restart fn key monitor: recording channel not initialized".into(),
-                );
-            }
-        },
-        Err(e) => {
-            return Err(format!("recording_tx mutex poisoned: {}", e));
+    let tx = match lock_or_recover(&state.recording_tx).as_ref() {
+        Some(tx) => tx.clone(),
+        None => {
+            return Err("Cannot restart fn key monitor: recording channel not initialized".into());
         }
     };
 
     let (new_handle, tap_ok) = hotkey::start_fn_key_monitor(app.clone(), tx, activation_mode);
-    if let Ok(mut guard) = state.fn_key_monitor.lock() {
-        *guard = Some(new_handle);
-    }
+    *lock_or_recover(&state.fn_key_monitor) = Some(new_handle);
 
     if !tap_ok {
         log::warn!("restart_fn_key_monitor: CGEventTap creation failed");
@@ -1055,11 +1012,9 @@ pub fn restart_fn_key_monitor(
 
 #[tauri::command]
 pub fn get_fn_key_monitor_status(state: State<'_, Arc<AppState>>) -> bool {
-    state
-        .fn_key_monitor
-        .lock()
-        .ok()
-        .and_then(|guard| guard.as_ref().map(|h| h.is_active()))
+    lock_or_recover(&state.fn_key_monitor)
+        .as_ref()
+        .map(|h| h.is_active())
         .unwrap_or(false)
 }
 
@@ -1087,7 +1042,7 @@ pub fn update_global_shortcut(
     // Best-effort unregister of the previously-registered shortcut so we don't
     // leak a stale binding when the user switches combinations. Errors are
     // ignored (it might not be registered, or the binding might be stale).
-    let old_str_opt = state.current_shortcut.lock().ok().and_then(|g| g.clone());
+    let old_str_opt = lock_or_recover(&state.current_shortcut).clone();
     if let Some(old_str) = old_str_opt {
         if let Ok(old) = old_str.parse::<Shortcut>() {
             let _ = app.global_shortcut().unregister(old);
@@ -1095,12 +1050,9 @@ pub fn update_global_shortcut(
     }
 
     // Clone the recording-command sender so the callback can dispatch toggles.
-    let tx = match state.recording_tx.lock() {
-        Ok(guard) => match guard.as_ref() {
-            Some(tx) => tx.clone(),
-            None => return Err("Recording channel not initialized".into()),
-        },
-        Err(e) => return Err(format!("recording_tx mutex poisoned: {}", e)),
+    let tx = match lock_or_recover(&state.recording_tx).as_ref() {
+        Some(tx) => tx.clone(),
+        None => return Err("Recording channel not initialized".into()),
     };
 
     app.global_shortcut()
@@ -1116,18 +1068,13 @@ pub fn update_global_shortcut(
     // Persist the new value (or `None` for "use default") and update the
     // tracked string so the next re-register knows what to unregister.
     {
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|e| format!("settings mutex poisoned: {}", e))?;
+        let mut settings = lock_or_recover(&state.settings);
         settings.custom_shortcut = shortcut;
         if let Err(e) = settings.save() {
             log::error!("Failed to save settings after shortcut change: {}", e);
         }
     }
-    if let Ok(mut current) = state.current_shortcut.lock() {
-        *current = Some(new_str.clone());
-    }
+    *lock_or_recover(&state.current_shortcut) = Some(new_str.clone());
 
     log::info!("Global shortcut updated: {}", new_str);
     Ok(())

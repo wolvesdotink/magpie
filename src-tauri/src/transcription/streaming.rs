@@ -21,7 +21,7 @@ use tokio::time::{sleep, Instant};
 
 use crate::audio;
 use crate::events::{self, event_names};
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 
 use super::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
 
@@ -83,10 +83,7 @@ async fn run_loop(
         tick = Instant::now() + Duration::from_millis(PARTIAL_INTERVAL_MS);
 
         // Snapshot length under a brief lock; skip the cycle if no growth.
-        let current_len = match state.audio_buffer.lock() {
-            Ok(buf) => buf.len(),
-            Err(p) => p.into_inner().len(),
-        };
+        let current_len = lock_or_recover(&state.audio_buffer).len();
         if current_len == last_processed_len {
             continue;
         }
@@ -94,22 +91,13 @@ async fn run_loop(
 
         // Read sample rate, then clone the buffer (releasing the lock before
         // inference). Cloning ~30s of f32 at 48kHz is < 6MB / sub-millisecond.
-        let sample_rate = match state.capture_sample_rate.lock() {
-            Ok(g) => *g,
-            Err(p) => *p.into_inner(),
-        };
-        let raw = match state.audio_buffer.lock() {
-            Ok(buf) => buf.clone(),
-            Err(p) => p.into_inner().clone(),
-        };
+        let sample_rate = *lock_or_recover(&state.capture_sample_rate);
+        let raw = lock_or_recover(&state.audio_buffer).clone();
 
         // Clone the backend Arc out under a brief lock; bail if not loaded.
         // The lock is released before inference so cpal callbacks and other
         // backend readers (e.g. final-on-stop) never wait on the decode.
-        let backend = match state.backend.lock() {
-            Ok(g) => g.clone(),
-            Err(p) => p.into_inner().clone(),
-        };
+        let backend = lock_or_recover(&state.backend).clone();
         let Some(backend) = backend else {
             continue;
         };
@@ -119,7 +107,7 @@ async fn run_loop(
             continue;
         }
 
-        let language = state.settings.lock().ok().and_then(|s| s.language.clone());
+        let language = lock_or_recover(&state.settings).language.clone();
 
         if partial_cancel.is_cancelled() {
             break;

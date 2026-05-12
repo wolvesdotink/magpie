@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
 use cpal::Stream;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
+use parking_lot::{Mutex, MutexGuard};
 
 use tokio::sync::mpsc;
 
@@ -82,8 +83,12 @@ pub struct AppState {
     pub active_downloads: Mutex<HashMap<String, CancellationToken>>,
 }
 
-// Safety: Stream is Send but not Sync by default in cpal,
-// but we only access it behind a Mutex
+// `cpal::Stream` contains C function pointers (FnMut callbacks) that are
+// neither `Send` nor `Sync`. We only ever read/write the stream through the
+// `Mutex` guard, and the callbacks themselves run on cpal's own audio
+// thread (never the caller's), so promoting `AppState` to Send + Sync is
+// safe in practice. This unsafe impl was present pre-Phase-2 with the
+// std::sync version too — parking_lot doesn't change the requirement.
 unsafe impl Send for AppState {}
 unsafe impl Sync for AppState {}
 
@@ -145,31 +150,21 @@ impl Default for AppState {
     }
 }
 
-/// Acquire a `Mutex` lock, recovering the guard if the mutex was poisoned by
-/// a previous panic. Used everywhere instead of `.lock().unwrap()` so a single
-/// crashing thread cannot cascade into "mutex poisoned" failures across the
-/// rest of the app.
+/// Acquire a `Mutex` lock.
 ///
-/// Why this is safe in practice: every `AppState` field is independent state
-/// that we either rebuild on the next operation (recording flags, audio
-/// buffer) or treat as read-only after init (backend, settings). A
-/// poison-recovery read may briefly observe a half-modified state, but the
-/// alternative — propagating a `PoisonError` to the UI — is strictly worse.
+/// parking_lot mutexes do not poison on panic — a thread that panics while
+/// holding the lock just drops the guard, and the next acquirer gets it as
+/// usual. So this is a thin wrapper over `parking_lot::Mutex::lock` whose
+/// real job is to **document the convention** used throughout the codebase
+/// and to give us a single place to add tracing / contention diagnostics
+/// later if needed.
 ///
-/// If you need to *fail* on poison rather than recover, use `Mutex::lock`
-/// directly and handle the error explicitly.
+/// Keep using this helper at every call site rather than `m.lock()`
+/// directly: it keeps the call shape uniform and lets us swap behavior in
+/// one place if we want timing/instrumentation later.
 #[inline]
 pub fn lock_or_recover<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    match m.lock() {
-        Ok(g) => g,
-        Err(poisoned) => {
-            tracing::warn!(
-                target = "magpie_lib::state",
-                "Mutex was poisoned; recovering guard. A prior panic left state inconsistent."
-            );
-            poisoned.into_inner()
-        }
-    }
+    m.lock()
 }
 
 #[cfg(test)]
@@ -179,24 +174,26 @@ mod tests {
     use std::thread;
 
     #[test]
-    fn lock_or_recover_returns_guard_when_healthy() {
+    fn lock_or_recover_returns_guard() {
         let m = Mutex::new(42i32);
         let g = lock_or_recover(&m);
         assert_eq!(*g, 42);
     }
 
     #[test]
-    fn lock_or_recover_recovers_from_poison() {
+    fn parking_lot_mutex_does_not_poison_on_panic() {
+        // parking_lot's whole point: a panic while holding the lock does
+        // not poison the mutex. The next acquirer sees the post-panic state.
         let m = Arc::new(Mutex::new(0i32));
         let m_clone = Arc::clone(&m);
         let _ = thread::spawn(move || {
-            let mut g = m_clone.lock().unwrap();
+            let mut g = m_clone.lock();
             *g = 99;
-            panic!("intentional poison for test");
+            panic!("intentional panic; should not poison");
         })
         .join();
 
-        assert!(m.is_poisoned());
+        // No `is_poisoned` on parking_lot mutexes — there's nothing to poison.
         let g = lock_or_recover(&m);
         assert_eq!(*g, 99);
     }

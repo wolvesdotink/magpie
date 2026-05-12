@@ -2862,6 +2862,7 @@ dependencies = [
  "log",
  "num_cpus",
  "objc",
+ "parking_lot",
  "pretty_assertions",
  "regex",
  "reqwest 0.12.28",
