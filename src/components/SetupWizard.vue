@@ -158,7 +158,7 @@ const models = ref<ModelInfo[]>([]);
 const downloadedFiles = ref<string[]>([]);
 type ModelTab = "english" | "multilingual";
 const activeTab = ref<ModelTab>("multilingual");
-const selectedModelId = ref<string | null>("base");
+const selectedModelId = ref<string | null>("small");
 const downloading = ref(false);
 const downloadProgress = ref(0);
 const downloadingModelId = ref<string | null>(null);
@@ -737,9 +737,9 @@ onUnmounted(() => {
               <span class="text-[13px] font-semibold text-ink">
                 {{ model.displayName }}
               </span>
-              <!-- Recommended badge for multilingual base -->
+              <!-- Recommended badge for multilingual small -->
               <span
-                v-if="model.id === 'base'"
+                v-if="model.id === 'small'"
                 class="px-1.5 py-[1px] rounded text-[8px] font-bold uppercase
                        tracking-wider bg-gold/15 text-gold border border-gold/20"
               >
