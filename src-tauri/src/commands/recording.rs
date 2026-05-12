@@ -70,7 +70,14 @@ pub async fn start_recording(
     // nothing to decode against — or if the user has disabled the live
     // preview in Settings (default off; final-on-stop is unaffected).
     let backend_present = lock_or_recover(&state.backend).is_some();
-    let streaming_enabled = lock_or_recover(&state.settings).streaming_preview;
+    // Resolve through FeatureFlags so the env override
+    // (MAGPIE_FEATURE_STREAMING_PREVIEW=0/1) actually gates the worker.
+    // Reading state.settings.streaming_preview directly would silently
+    // bypass the override layer.
+    let streaming_enabled = {
+        let settings = lock_or_recover(&state.settings);
+        crate::features::FeatureFlags::resolve(&settings).streaming_preview
+    };
     if backend_present && streaming_enabled {
         let handle = streaming::spawn_streaming_worker(app.clone(), state_arc.clone());
         *lock_or_recover(&state.streaming_handle) = Some(handle);
