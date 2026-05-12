@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* ─── Theme: Warm Studio ─────────────────────────────────────────── */
 
@@ -43,14 +43,14 @@
 /* ─── Shadow tokens (outside @theme so they stay as runtime vars) ── */
 
 :root {
-  --shadow-soft: 0 1px 2px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
-  --shadow-lifted: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
-  --shadow-elevated: 0 4px 16px rgba(0,0,0,0.4), 0 0 1px rgba(255,255,255,0.08);
-  --shadow-glow-gold: 0 0 16px rgba(232,175,71,0.15);
-  --shadow-glow-flame: 0 0 16px rgba(232,90,79,0.2);
-  --shadow-well: inset 0 1px 3px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(0,0,0,0.1);
-  --shadow-press: 0 1px 3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
-  --shadow-hero: 0 4px 14px rgba(232,175,71,0.25), 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-lifted: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-glow-gold: 0 0 16px rgba(232, 175, 71, 0.15);
+  --shadow-glow-flame: 0 0 16px rgba(232, 90, 79, 0.2);
+  --shadow-well: inset 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+  --shadow-press: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --shadow-hero: 0 4px 14px rgba(232, 175, 71, 0.25), 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 /* ─── Light mode ─────────────────────────────────────────────────── */
@@ -81,14 +81,14 @@
     --color-leaf: #3f8c40;
 
     /* Light mode shadows — warm gold-tinted, diffuse */
-    --shadow-soft: 0 1px 3px rgba(140,98,16,0.06), 0 1px 2px rgba(0,0,0,0.04);
-    --shadow-lifted: 0 2px 8px rgba(140,98,16,0.08), 0 1px 3px rgba(0,0,0,0.05);
-    --shadow-elevated: 0 4px 20px rgba(140,98,16,0.10), 0 2px 6px rgba(0,0,0,0.04);
-    --shadow-glow-gold: 0 0 20px rgba(196,137,15,0.12);
-    --shadow-glow-flame: 0 0 20px rgba(212,74,63,0.15);
-    --shadow-well: inset 0 1px 3px rgba(140,98,16,0.06);
-    --shadow-press: 0 1px 3px rgba(140,98,16,0.10), inset 0 1px 0 rgba(255,255,255,0.8);
-    --shadow-hero: 0 6px 20px rgba(196,137,15,0.20), 0 2px 6px rgba(0,0,0,0.06);
+    --shadow-soft: 0 1px 3px rgba(140, 98, 16, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-lifted: 0 2px 8px rgba(140, 98, 16, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+    --shadow-elevated: 0 4px 20px rgba(140, 98, 16, 0.1), 0 2px 6px rgba(0, 0, 0, 0.04);
+    --shadow-glow-gold: 0 0 20px rgba(196, 137, 15, 0.12);
+    --shadow-glow-flame: 0 0 20px rgba(212, 74, 63, 0.15);
+    --shadow-well: inset 0 1px 3px rgba(140, 98, 16, 0.06);
+    --shadow-press: 0 1px 3px rgba(140, 98, 16, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    --shadow-hero: 0 6px 20px rgba(196, 137, 15, 0.2), 0 2px 6px rgba(0, 0, 0, 0.06);
   }
 }
 
@@ -142,23 +142,46 @@
 /* ─── Keyframes ──────────────────────────────────────────────────── */
 
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: var(--shadow-glow-flame); }
-  50% { box-shadow: 0 0 28px rgba(212,74,63,0.35); }
+  0%,
+  100% {
+    box-shadow: var(--shadow-glow-flame);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(212, 74, 63, 0.35);
+  }
 }
 
 @keyframes shadow-breathe {
-  0%, 100% { box-shadow: var(--shadow-press); }
-  50% { box-shadow: var(--shadow-lifted); }
+  0%,
+  100% {
+    box-shadow: var(--shadow-press);
+  }
+  50% {
+    box-shadow: var(--shadow-lifted);
+  }
 }
 
 @keyframes breathe {
-  0%, 100% { transform: scale(1); opacity: 0.5; }
-  50% { transform: scale(1.8); opacity: 0; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
 }
 
 @keyframes float-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ─── Base resets ────────────────────────────────────────────────── */

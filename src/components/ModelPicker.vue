@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import {
   getAvailableModels,
   getDownloadedModels,
@@ -8,13 +8,13 @@ import {
   cancelDownload,
   selectModel,
   type ModelInfo,
-} from "@/lib/commands";
+} from '@/lib/commands';
 import {
   onModelDownloadProgress,
   onModelDownloadComplete,
   onModelDownloadCancelled,
-} from "@/lib/events";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+} from '@/lib/events';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
 const emit = defineEmits<{
   modelReady: [];
@@ -22,8 +22,8 @@ const emit = defineEmits<{
 
 const models = ref<ModelInfo[]>([]);
 const downloadedFiles = ref<string[]>([]);
-type ModelTab = "english" | "multilingual";
-const activeTab = ref<ModelTab>("english");
+type ModelTab = 'english' | 'multilingual';
+const activeTab = ref<ModelTab>('english');
 const selectedModelId = ref<string | null>(null);
 const downloading = ref(false);
 const downloadProgress = ref(0);
@@ -57,14 +57,12 @@ function totalDownloadBytes(model: ModelInfo): number {
 
 /** Pareto-dominated entries hidden from the picker (still in the registry
  * so existing users who selected them keep working). */
-const HIDDEN_FROM_PICKER = new Set(["medium.en"]);
+const HIDDEN_FROM_PICKER = new Set(['medium.en']);
 
 const displayedModels = computed(() =>
   models.value
     .filter((m) => !HIDDEN_FROM_PICKER.has(m.id))
-    .filter((m) =>
-      activeTab.value === "english" ? m.englishOnly : !m.englishOnly,
-    )
+    .filter((m) => (activeTab.value === 'english' ? m.englishOnly : !m.englishOnly))
     .sort((a, b) => {
       // Recommended for the current tab floats to the top, then size ascending.
       const tabTag = activeTab.value;
@@ -85,7 +83,7 @@ async function handleSelect(model: ModelInfo) {
   if (isDownloaded(model)) {
     try {
       await selectModel(model.id);
-      emit("modelReady");
+      emit('modelReady');
     } catch (e) {
       error.value = `Failed to load model: ${e}`;
     }
@@ -102,11 +100,11 @@ async function handleDownload() {
 
   try {
     await downloadModel(selectedModelId.value);
-    emit("modelReady");
+    emit('modelReady');
   } catch (e) {
     // User-initiated cancel surfaces as a rejection too — suppress it; the
     // cancelled listener resets state, so this branch only fires on real errors.
-    if (!String(e).toLowerCase().includes("cancel")) {
+    if (!String(e).toLowerCase().includes('cancel')) {
       error.value = `Download failed: ${e}`;
     }
     downloading.value = false;
@@ -119,7 +117,7 @@ async function handleCancel() {
   try {
     await cancelDownload(downloadingModelId.value);
   } catch (e) {
-    console.error("Cancel failed:", e);
+    console.error('Cancel failed:', e);
   }
 }
 
@@ -130,11 +128,11 @@ onMounted(async () => {
 
     // Default to multilingual tab if user has a non-English language set
     const settings = await getSettings();
-    if (settings.language && settings.language !== "en") {
-      activeTab.value = "multilingual";
+    if (settings.language && settings.language !== 'en') {
+      activeTab.value = 'multilingual';
     }
   } catch (e) {
-    console.error("Failed to load models:", e);
+    console.error('Failed to load models:', e);
   }
 
   unlisteners.push(
@@ -150,7 +148,7 @@ onMounted(async () => {
       try {
         downloadedFiles.value = await getDownloadedModels();
       } catch (e) {
-        console.error("Failed to refresh downloaded models:", e);
+        console.error('Failed to refresh downloaded models:', e);
       }
     }),
   );
@@ -177,19 +175,15 @@ onUnmounted(() => {
 
     <div class="flex flex-col flex-1 p-5 pt-6 min-h-0">
       <!-- Header -->
-      <h2 class="text-[15px] font-bold tracking-tight text-ink">
-        Choose a Model
-      </h2>
+      <h2 class="text-[15px] font-bold tracking-tight text-ink">Choose a Model</h2>
       <p class="text-[10px] text-ink-muted leading-relaxed mt-1.5 mb-4">
-        Select a speech recognition model. Larger models are more accurate but
-        slower.
+        Select a speech recognition model. Larger models are more accurate but slower.
       </p>
 
       <!-- ── Tabs ── -->
       <div class="flex gap-1 p-1 rounded-lg bg-raised border border-edge mb-4">
         <button
-          class="flex-1 py-1.5 rounded-md text-[12px] font-semibold
-                 transition-all duration-200"
+          class="flex-1 py-1.5 rounded-md text-[12px] font-semibold transition-all duration-200"
           :class="
             activeTab === 'english'
               ? 'bg-canvas text-ink shadow-soft'
@@ -200,8 +194,7 @@ onUnmounted(() => {
           English
         </button>
         <button
-          class="flex-1 py-1.5 rounded-md text-[12px] font-semibold
-                 transition-all duration-200"
+          class="flex-1 py-1.5 rounded-md text-[12px] font-semibold transition-all duration-200"
           :class="
             activeTab === 'multilingual'
               ? 'bg-canvas text-ink shadow-soft'
@@ -218,11 +211,9 @@ onUnmounted(() => {
         <button
           v-for="model in displayedModels"
           :key="model.id"
-          class="relative flex flex-col gap-1.5 p-3 rounded-lg border text-left
-                 transition-all duration-200 active:scale-[0.99]"
+          class="relative flex flex-col gap-1.5 p-3 rounded-lg border text-left transition-all duration-200 active:scale-[0.99]"
           :class="{
-            'bg-gold/[0.05] border-gold/30 shadow-glow-gold':
-              selectedModelId === model.id,
+            'bg-gold/[0.05] border-gold/30 shadow-glow-gold': selectedModelId === model.id,
             'bg-panel border-edge shadow-soft hover:bg-raised hover:border-edge-strong':
               selectedModelId !== model.id,
           }"
@@ -236,9 +227,7 @@ onUnmounted(() => {
               </span>
               <span
                 v-if="isRecommended(model)"
-                class="text-[9px] font-bold uppercase tracking-wider
-                       px-1.5 py-0.5 rounded bg-gold/15 text-gold
-                       border border-gold/30 flex-shrink-0"
+                class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gold/15 text-gold border border-gold/30 flex-shrink-0"
               >
                 Recommended
               </span>
@@ -246,8 +235,7 @@ onUnmounted(() => {
             <div class="flex items-center gap-2 flex-shrink-0">
               <span
                 v-if="isDownloaded(model)"
-                class="flex items-center gap-1 text-[10px] font-bold
-                       text-leaf uppercase tracking-wider"
+                class="flex items-center gap-1 text-[10px] font-bold text-leaf uppercase tracking-wider"
               >
                 <svg
                   width="10"
@@ -263,9 +251,7 @@ onUnmounted(() => {
                 </svg>
                 Ready
               </span>
-              <span
-                class="text-[11px] text-ink-faint font-medium tabular-nums"
-              >
+              <span class="text-[11px] text-ink-faint font-medium tabular-nums">
                 {{ formatBytes(totalDownloadBytes(model)) }}
               </span>
             </div>
@@ -279,9 +265,7 @@ onUnmounted(() => {
           <!-- Ratings -->
           <div class="flex gap-4 mt-0.5">
             <div class="flex items-center gap-1.5">
-              <span
-                class="text-[9px] uppercase tracking-[0.08em] font-semibold text-ink-faint"
-              >
+              <span class="text-[9px] uppercase tracking-[0.08em] font-semibold text-ink-faint">
                 Speed
               </span>
               <div class="flex gap-[3px]">
@@ -289,18 +273,12 @@ onUnmounted(() => {
                   v-for="i in 5"
                   :key="i"
                   class="w-[5px] h-[5px] rounded-full transition-colors duration-200"
-                  :class="
-                    i <= 6 - model.speedRating
-                      ? 'bg-gold'
-                      : 'bg-edge'
-                  "
+                  :class="i <= 6 - model.speedRating ? 'bg-gold' : 'bg-edge'"
                 />
               </div>
             </div>
             <div class="flex items-center gap-1.5">
-              <span
-                class="text-[9px] uppercase tracking-[0.08em] font-semibold text-ink-faint"
-              >
+              <span class="text-[9px] uppercase tracking-[0.08em] font-semibold text-ink-faint">
                 Accuracy
               </span>
               <div class="flex gap-[3px]">
@@ -308,9 +286,7 @@ onUnmounted(() => {
                   v-for="i in 5"
                   :key="i"
                   class="w-[5px] h-[5px] rounded-full transition-colors duration-200"
-                  :class="
-                    i <= model.accuracyRating ? 'bg-gold' : 'bg-edge'
-                  "
+                  :class="i <= model.accuracyRating ? 'bg-gold' : 'bg-edge'"
                 />
               </div>
             </div>
@@ -319,10 +295,7 @@ onUnmounted(() => {
       </div>
 
       <!-- ── Error ── -->
-      <div
-        v-if="error"
-        class="p-2.5 rounded-lg bg-flame/10 border border-flame/20 mb-3"
-      >
+      <div v-if="error" class="p-2.5 rounded-lg bg-flame/10 border border-flame/20 mb-3">
         <span class="text-[10px] text-flame">{{ error }}</span>
       </div>
 
@@ -333,25 +306,18 @@ onUnmounted(() => {
       >
         <div class="flex-1 h-1.5 bg-raised shadow-well rounded-full overflow-hidden">
           <div
-            class="h-full bg-gradient-to-r from-gold-deep to-gold rounded-full
-                   transition-[width] duration-300 ease-out"
+            class="h-full bg-gradient-to-r from-gold-deep to-gold rounded-full transition-[width] duration-300 ease-out"
             :style="{ width: `${downloadProgress}%` }"
           />
         </div>
-        <span
-          class="text-[10px] text-ink-muted font-medium tabular-nums min-w-[36px] text-right"
-        >
+        <span class="text-[10px] text-ink-muted font-medium tabular-nums min-w-[36px] text-right">
           {{ downloadProgress.toFixed(0) }}%
         </span>
         <button
           type="button"
           aria-label="Cancel download"
           title="Cancel download"
-          class="flex items-center justify-center w-[18px] h-[18px] rounded-full
-                 bg-raised border border-edge text-ink-faint
-                 transition-colors duration-150
-                 hover:bg-panel hover:text-ink hover:border-edge-strong
-                 active:scale-95"
+          class="flex items-center justify-center w-[18px] h-[18px] rounded-full bg-raised border border-edge text-ink-faint transition-colors duration-150 hover:bg-panel hover:text-ink hover:border-edge-strong active:scale-95"
           @click="handleCancel"
         >
           <svg
@@ -373,19 +339,14 @@ onUnmounted(() => {
       <!-- ── Action Button ── -->
       <button
         v-else
-        class="w-full py-2.5 rounded-lg text-[13px] font-semibold
-               transition-all duration-200 active:scale-[0.97]
-               bg-gradient-to-b from-gold to-gold-hover text-gold-ink
-               hover:from-gold-hover hover:to-gold-deep
-               shadow-press hover:shadow-lifted"
+        class="w-full py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 active:scale-[0.97] bg-gradient-to-b from-gold to-gold-hover text-gold-ink hover:from-gold-hover hover:to-gold-deep shadow-press hover:shadow-lifted"
         :disabled="!selectedModelId || downloading"
         @click="handleDownload"
       >
         {{
-          selectedModelId &&
-          isDownloaded(models.find((m) => m.id === selectedModelId)!)
-            ? "Use Selected Model"
-            : "Download & Use"
+          selectedModelId && isDownloaded(models.find((m) => m.id === selectedModelId)!)
+            ? 'Use Selected Model'
+            : 'Download & Use'
         }}
       </button>
     </div>

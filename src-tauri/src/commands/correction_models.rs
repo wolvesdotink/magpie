@@ -1,0 +1,248 @@
+//! Correction-model Tauri commands.
+//!
+//! Correction models are small LLMs (Qwen2.5-0.5B today) used by the
+//! `correction_detector` flow to detect and apply user corrections after
+//! a paste. They share the on-disk storage path with whisper models but
+//! load through llama.cpp rather than whisper.cpp.
+//!
+//! Surface mirrors commands/models.rs for whisper:
+//!   - get_available_correction_models / get_downloaded_correction_models
+//!   - download_correction_model — same download flow as whisper, but no
+//!     CoreML encoder sibling.
+//!   - select_correction_model — load an already-downloaded model.
+//!   - delete_correction_model_file — drop the file; clear the selection
+//!     and unload from AppState if the deleted model was active.
+
+use std::sync::Arc;
+
+use tauri::{AppHandle, State};
+
+use crate::command_error::CommandError;
+use crate::correction;
+use crate::events::{self, event_names};
+use crate::models::{downloader, storage, ModelError};
+use crate::state::{lock_or_recover, AppState};
+use crate::transcription::backend::CancellationToken;
+
+use super::app::get_app_state_payload;
+
+#[tauri::command]
+pub fn get_available_correction_models() -> Vec<correction::registry::CorrectionModelInfo> {
+    correction::registry::get_available_correction_models()
+}
+
+#[tauri::command]
+pub fn get_downloaded_correction_models() -> Result<Vec<String>, CommandError> {
+    Ok(storage::list_downloaded_correction_models()?)
+}
+
+#[tauri::command]
+pub async fn download_correction_model(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    model_id: String,
+) -> Result<(), CommandError> {
+    let model_info = correction::registry::find_correction_model(&model_id)
+        .ok_or(ModelError::UnknownId(model_id.clone()))?;
+
+    // Register a cancellation token so `cancel_download` can interrupt
+    // the stream loop. Removed unconditionally on every exit path below.
+    let cancel = CancellationToken::new();
+    {
+        let mut active = lock_or_recover(&state.active_downloads);
+        active.insert(model_id.clone(), cancel.clone());
+    }
+
+    let result = downloader::download_model(
+        &app,
+        &model_id,
+        &model_info.url,
+        &model_info.filename,
+        model_info.size_bytes,
+        None,
+        Some(&cancel),
+    )
+    .await;
+
+    {
+        let mut active = lock_or_recover(&state.active_downloads);
+        active.remove(&model_id);
+    }
+
+    let path = match result {
+        Ok(p) => p,
+        Err(ModelError::Cancelled) => {
+            log::info!(
+                "Correction-model download of {} cancelled by user",
+                model_id
+            );
+            events::emit_event(
+                &app,
+                event_names::MODEL_DOWNLOAD_CANCELLED,
+                serde_json::json!({ "modelId": model_id }),
+            );
+            return Err(CommandError::Cancelled);
+        }
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+
+    events::emit_event(
+        &app,
+        event_names::MODEL_DOWNLOAD_COMPLETE,
+        serde_json::json!({ "modelId": model_id }),
+    );
+
+    // Auto-load the model after download. On failure, keep the file (it
+    // is likely valid) but report the error so the user can retry without
+    // re-downloading.
+    if let Err(e) = load_correction_model_internal(&app, &state, &path, &model_id) {
+        log::error!("Correction model downloaded but failed to load: {}", e);
+        return Err(e);
+    }
+
+    // Persist the selection so the correction model auto-loads on next launch
+    {
+        let mut settings = lock_or_recover(&state.settings);
+        settings.selected_correction_model = Some(model_id.clone());
+        if let Err(e) = settings.save() {
+            log::error!("Failed to save settings: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn select_correction_model(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    model_id: String,
+) -> Result<(), CommandError> {
+    let model_info = correction::registry::find_correction_model(&model_id)
+        .ok_or(ModelError::UnknownId(model_id.clone()))?;
+
+    let path = storage::model_path(&model_info.filename)?;
+
+    if !path.exists() {
+        return Err(ModelError::UnknownId(format!(
+            "{model_id} (correction model file missing on disk)"
+        ))
+        .into());
+    }
+
+    load_correction_model_internal(&app, &state, &path, &model_id)?;
+
+    // Save preference
+    {
+        let mut settings = lock_or_recover(&state.settings);
+        settings.selected_correction_model = Some(model_id);
+        if let Err(e) = settings.save() {
+            log::error!("Failed to save settings: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_correction_model_file(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    model_id: String,
+) -> Result<(), CommandError> {
+    let model_info = correction::registry::find_correction_model(&model_id)
+        .ok_or(ModelError::UnknownId(model_id.clone()))?;
+
+    storage::delete_correction_model(&model_info.filename)?;
+
+    // If the deleted model was the active one, clear the selection and unload
+    {
+        let mut settings = lock_or_recover(&state.settings);
+        if settings.selected_correction_model.as_deref() == Some(&model_id) {
+            settings.selected_correction_model = None;
+            if let Err(e) = settings.save() {
+                log::error!("Failed to save settings: {}", e);
+            }
+        }
+    }
+    {
+        let current_path = lock_or_recover(&state.current_correction_model_path);
+        if current_path.is_some() {
+            drop(current_path);
+            let mut cm = lock_or_recover(&state.correction_model);
+            *cm = None;
+            let mut cp = lock_or_recover(&state.current_correction_model_path);
+            *cp = None;
+        }
+    }
+
+    // Emit state change
+    events::emit_event(
+        &app,
+        event_names::APP_STATE_CHANGED,
+        get_app_state_payload(&state),
+    );
+
+    Ok(())
+}
+
+/// Shared "load correction model into AppState, emit state-changed event"
+/// path. Used by both `download_correction_model` (post-fetch) and
+/// `select_correction_model` (when the user switches to an already-
+/// downloaded model). Initializes `llama_backend` on first call.
+///
+/// # Locking
+///
+/// We hold `llama_backend` (rank 9) across the FFI `load_correction_model`
+/// call. This intentionally serializes concurrent correction-model loads
+/// — two parallel `select_correction_model` invocations would race the
+/// `correction_model` slot anyway, and llama.cpp's model loader is not
+/// safe to enter twice in parallel from the same backend handle. The
+/// trade-off is that other commands that touch `llama_backend` will
+/// queue while a load is in flight; nothing else does today.
+fn load_correction_model_internal(
+    app: &AppHandle,
+    state: &State<'_, Arc<AppState>>,
+    path: &std::path::Path,
+    model_id: &str,
+) -> Result<(), CommandError> {
+    // Initialize llama backend if needed
+    {
+        let mut backend_guard = lock_or_recover(&state.llama_backend);
+        if backend_guard.is_none() {
+            let backend = llama_cpp_2::llama_backend::LlamaBackend::init()
+                .map_err(|e| crate::correction::CorrectionError::BackendInit(format!("{e:?}")))?;
+            *backend_guard = Some(backend);
+        }
+    }
+
+    let backend_guard = lock_or_recover(&state.llama_backend);
+    let backend = backend_guard
+        .as_ref()
+        .ok_or(crate::correction::CorrectionError::NotLoaded)?;
+
+    let model = correction::engine::load_correction_model(backend, path)?;
+
+    {
+        let mut cm = lock_or_recover(&state.correction_model);
+        *cm = Some(model);
+    }
+    {
+        let mut cp = lock_or_recover(&state.current_correction_model_path);
+        *cp = Some(path.to_path_buf());
+    }
+
+    log::info!("Correction model {} loaded successfully", model_id);
+    drop(backend_guard); // release rank-9 before re-entering rank-2 via get_app_state_payload
+
+    // Emit state change
+    events::emit_event(
+        app,
+        event_names::APP_STATE_CHANGED,
+        get_app_state_payload(state),
+    );
+
+    Ok(())
+}

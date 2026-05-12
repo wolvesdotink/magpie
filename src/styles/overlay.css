@@ -4,8 +4,7 @@
   --text-primary: #e8e8e8;
   --recording: #e05555;
   --processing: #f5a623;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
-    sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
 }
 
 @media (prefers-color-scheme: light) {

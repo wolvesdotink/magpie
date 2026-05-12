@@ -19,16 +19,10 @@
  * src-tauri/tauri.conf.json under `plugins.updater`. This composable does
  * NOT know the URL — that's baked into the binary at build time.
  */
-import { onMounted, onUnmounted, ref } from "vue";
-import type { UnlistenFn } from "@tauri-apps/api/event";
+import { onMounted, onUnmounted, ref } from 'vue';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
-type UpdaterStatus =
-  | "idle"
-  | "checking"
-  | "available"
-  | "downloading"
-  | "ready"
-  | "error";
+type UpdaterStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
 
 export type UpdaterState = {
   status: UpdaterStatus;
@@ -45,7 +39,7 @@ export type UpdaterState = {
 };
 
 const initialState: UpdaterState = {
-  status: "idle",
+  status: 'idle',
   newVersion: null,
   notes: null,
   downloaded: 0,
@@ -70,30 +64,29 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
   const dismissed = ref(false);
 
   /** Holds the Update handle returned by `check()` so install/restart can use it. */
-  let updateHandle: Awaited<
-    ReturnType<typeof import("@tauri-apps/plugin-updater").check>
-  > | null = null;
+  let updateHandle: Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>> | null =
+    null;
 
   let bootTimer: number | null = null;
   let unlistenMenu: UnlistenFn | null = null;
 
   async function checkNow(): Promise<void> {
     dismissed.value = false;
-    state.value = { ...state.value, status: "checking", error: null };
+    state.value = { ...state.value, status: 'checking', error: null };
     try {
       // Lazy import — keeps the module out of the dev/browser bundle path
       // on first paint and lets the catch below cover the "plugin not
       // present" case cleanly.
-      const { check } = await import("@tauri-apps/plugin-updater");
+      const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
       if (!update) {
         updateHandle = null;
-        state.value = { ...initialState, status: "idle" };
+        state.value = { ...initialState, status: 'idle' };
         return;
       }
       updateHandle = update;
       state.value = {
-        status: "available",
+        status: 'available',
         newVersion: update.version ?? null,
         notes: update.body ?? null,
         downloaded: 0,
@@ -106,7 +99,7 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
       updateHandle = null;
       state.value = {
         ...initialState,
-        status: "error",
+        status: 'error',
         error: (e as Error).message ?? String(e),
       };
     }
@@ -116,7 +109,7 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
     if (!updateHandle) return;
     state.value = {
       ...state.value,
-      status: "downloading",
+      status: 'downloading',
       downloaded: 0,
       totalBytes: 0,
     };
@@ -132,25 +125,23 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
         // verification and BEFORE the install step that extracts the .tar.gz
         // and replaces the running .app bundle. Either of those can fail; we
         // use the promise resolution below as the single source of truth.
-        if (event.event === "Started") {
-          const total =
-            (event.data as { contentLength?: number }).contentLength ?? 0;
+        if (event.event === 'Started') {
+          const total = (event.data as { contentLength?: number }).contentLength ?? 0;
           state.value = { ...state.value, totalBytes: total };
-        } else if (event.event === "Progress") {
-          const chunk =
-            (event.data as { chunkLength?: number }).chunkLength ?? 0;
+        } else if (event.event === 'Progress') {
+          const chunk = (event.data as { chunkLength?: number }).chunkLength ?? 0;
           state.value = {
             ...state.value,
             downloaded: state.value.downloaded + chunk,
           };
         }
       });
-      state.value = { ...state.value, status: "ready" };
+      state.value = { ...state.value, status: 'ready' };
     } catch (e) {
-      console.error("[updater] install failed:", e);
+      console.error('[updater] install failed:', e);
       state.value = {
         ...state.value,
-        status: "error",
+        status: 'error',
         error: (e as Error).message ?? String(e),
       };
     }
@@ -158,12 +149,12 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
 
   async function restart(): Promise<void> {
     try {
-      const { relaunch } = await import("@tauri-apps/plugin-process");
+      const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
     } catch (e) {
       state.value = {
         ...state.value,
-        status: "error",
+        status: 'error',
         error: (e as Error).message ?? String(e),
       };
     }
@@ -182,13 +173,13 @@ export function useUpdater(options: UseUpdaterOptions = {}) {
 
     if (listenMenu) {
       try {
-        const { listen } = await import("@tauri-apps/api/event");
-        unlistenMenu = await listen("menu://check-for-updates", () => {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlistenMenu = await listen('menu://check-for-updates', () => {
           void checkNow();
         });
       } catch (e) {
         // Outside Tauri runtime (e.g. plain Vite preview) — listening is a no-op.
-        console.debug("[updater] menu listener not registered:", e);
+        console.debug('[updater] menu listener not registered:', e);
       }
     }
   });

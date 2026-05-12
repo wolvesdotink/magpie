@@ -88,5 +88,25 @@ thiserror = "2"
 regex = "1"
 num_cpus = "1"
 
+# parking_lot replaces std::sync::Mutex / RwLock with implementations that
+# do not poison on panic, lock faster on contention, and offer RwLock with
+# the same ergonomics as Mutex. Adopted in Phase 2 of the architecture
+# refactor; see `state::AppState` for the lock-ordering protocol.
+parking_lot = "0.12"
+
+# Structured logging. Adopted in Phase 0 of the architecture refactor and
+# used by all new code. `tracing-log` keeps the existing `log::*` calls
+# (and ecosystem crates like whisper-rs / llama-cpp-2 that emit via `log`)
+# routed into the same subscriber, so we do not need a flag-day cutover.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-log = "0.2"
+
+[dev-dependencies]
+# Snapshot testing for postprocess / migrations / event-payload shapes.
+insta = { version = "1.41", features = ["json", "yaml"] }
+# Property-style assertions used by some of the early test seams.
+pretty_assertions = "1.4"
+
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }

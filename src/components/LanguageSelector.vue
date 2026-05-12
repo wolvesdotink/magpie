@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
-import { useSettings } from "@/composables/useSettings";
-import { LANGUAGES, languageLabel } from "@/lib/languages";
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useSettings } from '@/composables/useSettings';
+import { LANGUAGES, languageLabel } from '@/lib/languages';
 
-const { currentLanguageCode, isEnglishOnlyModel, updateLanguage, loading } =
-  useSettings();
+const { currentLanguageCode, isEnglishOnlyModel, updateLanguage, loading } = useSettings();
 
 const open = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
@@ -35,8 +34,8 @@ function onClickOutside(e: MouseEvent) {
   }
 }
 
-onMounted(() => document.addEventListener("mousedown", onClickOutside));
-onUnmounted(() => document.removeEventListener("mousedown", onClickOutside));
+onMounted(() => document.addEventListener('mousedown', onClickOutside));
+onUnmounted(() => document.removeEventListener('mousedown', onClickOutside));
 </script>
 
 <template>
@@ -44,11 +43,7 @@ onUnmounted(() => document.removeEventListener("mousedown", onClickOutside));
     <!-- Trigger chip -->
     <button
       ref="triggerRef"
-      class="inline-flex items-center gap-1 px-1.5 py-0.5
-             text-[10px] font-semibold leading-none
-             bg-raised rounded border border-edge shadow-soft
-             text-ink-faint hover:text-ink-muted hover:border-edge-strong
-             transition-colors duration-150"
+      class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-raised rounded border border-edge shadow-soft text-ink-faint hover:text-ink-muted hover:border-edge-strong transition-colors duration-150"
       :class="{ 'border-gold/30 text-ink-muted': open }"
       @click="toggle"
     >
@@ -66,7 +61,9 @@ onUnmounted(() => document.removeEventListener("mousedown", onClickOutside));
       >
         <circle cx="12" cy="12" r="10" />
         <path d="M2 12h20" />
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        <path
+          d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+        />
       </svg>
       <span>{{ chipLabel }}</span>
       <!-- Chevron -->
@@ -98,15 +95,12 @@ onUnmounted(() => document.removeEventListener("mousedown", onClickOutside));
       <div
         v-if="open && !loading"
         ref="dropdownRef"
-        class="absolute bottom-full right-0 mb-1.5 w-52
-               bg-panel border border-edge rounded-lg shadow-elevated
-               overflow-hidden z-50"
+        class="absolute bottom-full right-0 mb-1.5 w-52 bg-panel border border-edge rounded-lg shadow-elevated overflow-hidden z-50"
       >
         <!-- English-only model hint -->
         <div
           v-if="isEnglishOnlyModel"
-          class="px-3 py-1.5 text-[10px] text-gold bg-gold/[0.06]
-                 border-b border-edge leading-snug"
+          class="px-3 py-1.5 text-[10px] text-gold bg-gold/[0.06] border-b border-edge leading-snug"
         >
           Multilingual model required for other languages
         </div>
@@ -114,8 +108,7 @@ onUnmounted(() => document.removeEventListener("mousedown", onClickOutside));
         <div class="max-h-[280px] overflow-y-auto py-1">
           <!-- Auto-detect option -->
           <button
-            class="flex items-center justify-between w-full px-3 py-1.5
-                   text-left transition-colors duration-100"
+            class="flex items-center justify-between w-full px-3 py-1.5 text-left transition-colors duration-100"
             :class="
               currentLanguageCode === 'auto'
                 ? 'bg-gold/[0.06] text-ink'
@@ -147,12 +140,9 @@ onUnmounted(() => document.removeEventListener("mousedown", onClickOutside));
           <button
             v-for="lang in explicitLanguages"
             :key="lang.code"
-            class="flex items-center justify-between w-full px-3 py-1.5
-                   text-left transition-colors duration-100"
+            class="flex items-center justify-between w-full px-3 py-1.5 text-left transition-colors duration-100"
             :class="[
-              currentLanguageCode === lang.code
-                ? 'bg-gold/[0.06] text-ink'
-                : 'hover:bg-raised',
+              currentLanguageCode === lang.code ? 'bg-gold/[0.06] text-ink' : 'hover:bg-raised',
               isEnglishOnlyModel && lang.code !== 'en'
                 ? 'opacity-40 text-ink-faint'
                 : 'text-ink-muted hover:text-ink',

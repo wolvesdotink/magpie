@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use anyhow::Result;
 use tauri::AppHandle;
 
 use crate::constants::CLIPBOARD_RESTORE_DELAY_MS;
+use crate::output::{OutputError, Result};
 
 /// Paste text into the active application by:
 /// 1. Saving the current clipboard
@@ -25,34 +25,33 @@ pub fn paste_text(app: &AppHandle, text: &str) -> Result<()> {
     // On macOS, enigo's Key::Unicode handling calls TISCopyCurrentKeyboardInputSource()
     // and UCKeyTranslate() which are NOT thread-safe and must run on the main thread.
     // We use a channel to wait for the result synchronously.
-    let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    let (tx, rx) = std::sync::mpsc::channel::<Result<()>>();
 
     app.run_on_main_thread(move || {
-        let result = (|| -> Result<(), String> {
+        let result = (|| -> Result<()> {
             use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
             let mut enigo = Enigo::new(&Settings::default())
-                .map_err(|e| format!("Failed to create enigo: {:?}", e))?;
+                .map_err(|e| OutputError::InputSimInit(format!("{e:?}")))?;
 
             enigo
                 .key(Key::Meta, Direction::Press)
-                .map_err(|e| format!("Failed to press Meta: {:?}", e))?;
+                .map_err(|e| OutputError::Keystroke(format!("press Meta: {e:?}")))?;
             enigo
                 .key(Key::Unicode('v'), Direction::Click)
-                .map_err(|e| format!("Failed to click v: {:?}", e))?;
+                .map_err(|e| OutputError::Keystroke(format!("click v: {e:?}")))?;
             enigo
                 .key(Key::Meta, Direction::Release)
-                .map_err(|e| format!("Failed to release Meta: {:?}", e))?;
+                .map_err(|e| OutputError::Keystroke(format!("release Meta: {e:?}")))?;
 
             Ok(())
         })();
         let _ = tx.send(result);
     })
-    .map_err(|e| anyhow::anyhow!("Failed to dispatch to main thread: {:?}", e))?;
+    .map_err(|e| OutputError::Keystroke(format!("dispatch to main thread: {e:?}")))?;
 
     rx.recv()
-        .map_err(|e| anyhow::anyhow!("Main thread channel closed: {:?}", e))?
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+        .map_err(|e| OutputError::Keystroke(format!("main thread channel closed: {e:?}")))??;
 
     // Restore original clipboard after a delay
     if let Some(original) = original_clipboard {

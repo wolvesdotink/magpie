@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
@@ -11,6 +10,13 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::sampling::LlamaSampler;
 
 use crate::constants;
+use crate::correction::{CorrectionError, Result};
+
+/// Map any `Display`-able llama_cpp_2 error into `CorrectionError::Inference`
+/// with a contextual prefix.
+fn inference_err<E: std::fmt::Display>(prefix: &'static str) -> impl FnOnce(E) -> CorrectionError {
+    move |e| CorrectionError::Inference(format!("{prefix}: {e}"))
+}
 
 #[allow(deprecated)]
 use llama_cpp_2::model::Special;
@@ -39,10 +45,13 @@ pub fn load_correction_model(backend: &LlamaBackend, path: &Path) -> Result<Llam
 
     // Force CPU-only inference (n_gpu_layers=0). These correction models are small
     // (0.5B-1.5B params) and run fast on CPU; no need for Metal overhead.
-    let params = LlamaModelParams::default()
-        .with_n_gpu_layers(0);
-    let model = LlamaModel::load_from_file(backend, path, &params)
-        .map_err(|e| anyhow::anyhow!("Failed to load correction model: {:?}", e))?;
+    let params = LlamaModelParams::default().with_n_gpu_layers(0);
+    let model = LlamaModel::load_from_file(backend, path, &params).map_err(|e| {
+        CorrectionError::ModelLoad {
+            path: path.to_path_buf(),
+            message: format!("{e:?}"),
+        }
+    })?;
 
     log::info!("Correction model loaded in {:?}", start.elapsed());
     Ok(model)
@@ -71,12 +80,12 @@ pub fn correct_transcription(
 
     let mut ctx = model
         .new_context(backend, ctx_params)
-        .map_err(|e| anyhow::anyhow!("Failed to create LLM context: {:?}", e))?;
+        .map_err(inference_err("create LLM context"))?;
 
     // Tokenize the prompt
     let tokens = model
         .str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)
-        .context("Failed to tokenize prompt")?;
+        .map_err(inference_err("tokenize prompt"))?;
 
     let n_prompt = tokens.len();
     // Cap output at ~1.1x input text tokens + 16 for safety margin
@@ -98,16 +107,13 @@ pub fn correct_transcription(
         let is_last = i == n_prompt - 1;
         batch
             .add(token, i as i32, &[0], is_last)
-            .context("Failed to add token to batch")?;
+            .map_err(inference_err("add token to batch"))?;
     }
     ctx.decode(&mut batch)
-        .context("Failed to decode prompt batch")?;
+        .map_err(inference_err("decode prompt batch"))?;
 
     // Set up sampler: low temperature for near-deterministic output
-    let mut sampler = LlamaSampler::chain_simple([
-        LlamaSampler::temp(0.1),
-        LlamaSampler::dist(42),
-    ]);
+    let mut sampler = LlamaSampler::chain_simple([LlamaSampler::temp(0.1), LlamaSampler::dist(42)]);
 
     // Generate tokens
     let mut output_pieces: Vec<String> = Vec::new();
@@ -132,9 +138,9 @@ pub fn correct_transcription(
         batch.clear();
         batch
             .add(new_token, n_cur as i32, &[0], true)
-            .context("Failed to add generated token to batch")?;
+            .map_err(inference_err("add generated token to batch"))?;
         ctx.decode(&mut batch)
-            .context("Failed to decode generated token")?;
+            .map_err(inference_err("decode generated token"))?;
         n_cur += 1;
     }
 
@@ -209,10 +215,7 @@ mod tests {
 
     #[test]
     fn test_validate_correction_accepts_identical() {
-        assert!(validate_correction(
-            "Hello world",
-            "Hello world"
-        ));
+        assert!(validate_correction("Hello world", "Hello world"));
     }
 
     #[test]

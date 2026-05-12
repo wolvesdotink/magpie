@@ -45,7 +45,8 @@ fn remove_filler_words(text: &str, fillers: &[String]) -> String {
 
 /// Normalize multiple spaces and trim
 fn normalize_whitespace(text: &str) -> String {
-    let re = Regex::new(r"\s+").unwrap();
+    // Invariant: the literal `\s+` is a valid regex; this can never fail.
+    let re = Regex::new(r"\s+").expect("invariant: literal whitespace regex compiles");
     re.replace_all(text.trim(), " ").to_string()
 }
 
@@ -74,7 +75,10 @@ fn apply_vocabulary_replacements(text: &str, replacements: &[(String, String)]) 
 /// - If source starts with uppercase, capitalize target
 /// - Otherwise return target as-is (the learned correct form)
 fn apply_case_pattern(source: &str, target: &str) -> String {
-    if source.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()) {
+    if source
+        .chars()
+        .all(|c| !c.is_alphabetic() || c.is_uppercase())
+    {
         target.to_uppercase()
     } else if source
         .chars()
@@ -159,12 +163,7 @@ mod tests {
             ("Marshal".to_string(), "Marcel".to_string()),
             ("cubernetes".to_string(), "Kubernetes".to_string()),
         ];
-        let result = postprocess(
-            "Marshal uses cubernetes",
-            &[],
-            false,
-            &replacements,
-        );
+        let result = postprocess("Marshal uses cubernetes", &[], false, &replacements);
         assert_eq!(result, "Marcel uses Kubernetes");
     }
 

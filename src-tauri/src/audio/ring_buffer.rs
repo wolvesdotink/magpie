@@ -1,0 +1,186 @@
+//! Bounded ring buffer for captured PCM audio.
+//!
+//! Replaces the unbounded `Vec<f32>` that backed `AppState::audio_buffer`
+//! pre-Phase-2. A 60-minute dictation at 48 kHz would have grown that Vec
+//! to ~700 MB; the ring buffer caps memory at [`MAX_BUFFER_SAMPLES`] and
+//! drops the oldest samples on overflow.
+//!
+//! On overflow the [`has_overflowed`](AudioRingBuffer::has_overflowed) flag
+//! is set so a higher-rank layer can surface a "recording truncated" UI
+//! cue. The buffer itself stays usable — partial / final decode just sees
+//! the most recent [`MAX_BUFFER_SAMPLES`] samples.
+//!
+//! API mirrors the parts of `Vec<f32>` previously used at the call sites
+//! (`push_slice` ↔ `extend_from_slice`, `clear`, `len`, `is_empty`,
+//! `snapshot` ↔ `clone`) so the swap is local.
+
+use std::collections::VecDeque;
+
+/// Maximum samples retained. 28 800 000 = 10 min at 48 kHz, 30 min at
+/// 16 kHz — a comfortable ceiling for either the highest plausible cpal
+/// rate or a future downsampled-on-capture buffer. ~115 MB at peak.
+///
+/// The number is generous on purpose: this is a *runaway-prevention* cap,
+/// not a target. 99% of real dictations are well under 1 min.
+pub const MAX_BUFFER_SAMPLES: usize = 28_800_000;
+
+#[derive(Debug)]
+pub struct AudioRingBuffer {
+    data: VecDeque<f32>,
+    capacity: usize,
+    samples_written: u64,
+    overflowed: bool,
+}
+
+impl Default for AudioRingBuffer {
+    fn default() -> Self {
+        Self::with_capacity(MAX_BUFFER_SAMPLES)
+    }
+}
+
+impl AudioRingBuffer {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            // VecDeque::with_capacity reserves but does not commit physical
+            // pages — they get committed lazily on first write. Allocating
+            // the worst case up front is fine.
+            data: VecDeque::with_capacity(capacity),
+            capacity,
+            samples_written: 0,
+            overflowed: false,
+        }
+    }
+
+    /// Append `samples`, dropping oldest content if the capacity is full.
+    pub fn push_slice(&mut self, samples: &[f32]) {
+        for &s in samples {
+            if self.data.len() == self.capacity {
+                self.data.pop_front();
+                self.overflowed = true;
+            }
+            self.data.push_back(s);
+        }
+        self.samples_written = self.samples_written.saturating_add(samples.len() as u64);
+    }
+
+    /// Current logical length (number of samples available for read). Plateaus
+    /// at `capacity` after the buffer first overflows.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Total samples ever written into the buffer for this recording session.
+    /// Unlike `len()`, this keeps growing past `capacity` — the streaming
+    /// worker uses it to detect "new audio since last decode" even after
+    /// the buffer wrapped.
+    pub fn samples_written(&self) -> u64 {
+        self.samples_written
+    }
+
+    /// `true` once at least one sample has been evicted to make room for a
+    /// newer one. Sticky for the life of the recording (until `clear()`).
+    pub fn has_overflowed(&self) -> bool {
+        self.overflowed
+    }
+
+    /// Copy current contents into a flat `Vec<f32>` in chronological order.
+    /// Allocates one Vec sized to `len()`. Whisper / partial-decode callers
+    /// use this to take a snapshot they can hold across the decode.
+    pub fn snapshot(&self) -> Vec<f32> {
+        let (a, b) = self.data.as_slices();
+        let mut out = Vec::with_capacity(self.data.len());
+        out.extend_from_slice(a);
+        out.extend_from_slice(b);
+        out
+    }
+
+    /// Reset for a new recording. The underlying allocation is retained.
+    pub fn clear(&mut self) {
+        self.data.clear();
+        self.samples_written = 0;
+        self.overflowed = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_and_snapshot_round_trip() {
+        let mut r = AudioRingBuffer::with_capacity(10);
+        r.push_slice(&[1.0, 2.0, 3.0]);
+        assert_eq!(r.len(), 3);
+        assert_eq!(r.snapshot(), vec![1.0, 2.0, 3.0]);
+        assert!(!r.has_overflowed());
+        assert_eq!(r.samples_written(), 3);
+    }
+
+    #[test]
+    fn overflow_drops_oldest() {
+        let mut r = AudioRingBuffer::with_capacity(4);
+        r.push_slice(&[1.0, 2.0, 3.0, 4.0]);
+        r.push_slice(&[5.0, 6.0]);
+        assert_eq!(r.len(), 4);
+        assert_eq!(r.snapshot(), vec![3.0, 4.0, 5.0, 6.0]);
+        assert!(r.has_overflowed());
+        assert_eq!(r.samples_written(), 6);
+    }
+
+    #[test]
+    fn snapshot_preserves_chronological_order_after_many_wraps() {
+        let mut r = AudioRingBuffer::with_capacity(3);
+        for i in 1..=10 {
+            r.push_slice(&[i as f32]);
+        }
+        // After 10 pushes into cap=3, last 3 wins.
+        assert_eq!(r.snapshot(), vec![8.0, 9.0, 10.0]);
+        assert!(r.has_overflowed());
+        assert_eq!(r.samples_written(), 10);
+    }
+
+    #[test]
+    fn clear_resets_state_but_keeps_allocation() {
+        let mut r = AudioRingBuffer::with_capacity(100);
+        r.push_slice(&[1.0, 2.0, 3.0]);
+        r.clear();
+        assert!(r.is_empty());
+        assert!(!r.has_overflowed());
+        assert_eq!(r.samples_written(), 0);
+        // Allocation retained (VecDeque::clear does not shrink) — implicit
+        // contract checked by the docstring; we don't assert capacity here
+        // because VecDeque doesn't expose a way to read it directly.
+    }
+
+    #[test]
+    fn empty_push_is_noop() {
+        let mut r = AudioRingBuffer::with_capacity(8);
+        r.push_slice(&[]);
+        assert!(r.is_empty());
+        assert_eq!(r.samples_written(), 0);
+    }
+
+    #[test]
+    fn snapshot_of_partial_fill_is_in_order() {
+        let mut r = AudioRingBuffer::with_capacity(10);
+        r.push_slice(&[1.0, 2.0]);
+        r.push_slice(&[3.0]);
+        r.push_slice(&[4.0, 5.0]);
+        assert_eq!(r.snapshot(), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn default_uses_max_capacity() {
+        let r = AudioRingBuffer::default();
+        // Capacity field is private; the observable property is "very large".
+        // Push one sample and check it lands without overflow.
+        let mut r = r;
+        r.push_slice(&[0.42]);
+        assert_eq!(r.len(), 1);
+        assert!(!r.has_overflowed());
+    }
+}

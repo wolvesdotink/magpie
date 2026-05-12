@@ -2,13 +2,13 @@ use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::{Context, Result};
 use futures_util::StreamExt;
 use tauri::AppHandle;
 use tokio::io::AsyncWriteExt;
 
 use crate::constants;
 use crate::events::{self, event_names, ModelDownloadProgress};
+use crate::models::{ModelError, Result};
 use crate::transcription::backend::CancellationToken;
 
 /// Optional CoreML encoder package to fetch alongside the GGML weights.
@@ -20,14 +20,9 @@ pub struct EncoderSpec<'a> {
     pub size_bytes: u64,
 }
 
-/// Result of a download call. Cancellation is split out from real failures
-/// so callers can suppress error UI when the user explicitly aborted.
-#[derive(Debug, thiserror::Error)]
-pub enum DownloadError {
-    #[error("download cancelled")]
-    Cancelled,
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+/// Wrap a `std::io::Error` with the path that caused it.
+fn io_at(path: PathBuf) -> impl FnOnce(std::io::Error) -> ModelError {
+    move |source| ModelError::Io { path, source }
 }
 
 /// Download a model file from the given URL to the models directory.
@@ -48,13 +43,13 @@ pub async fn download_model(
     expected_bytes: u64,
     encoder: Option<EncoderSpec<'_>>,
     cancel: Option<&CancellationToken>,
-) -> std::result::Result<PathBuf, DownloadError> {
-    let dest_path = super::storage::model_path(filename).map_err(DownloadError::Other)?;
+) -> Result<PathBuf> {
+    let dest_path = super::storage::model_path(filename)?;
     let temp_path = dest_path.with_extension("bin.downloading");
 
     log::info!("Downloading model {} from {}", model_id, url);
 
-    let client = build_client().map_err(DownloadError::Other)?;
+    let client = build_client()?;
 
     // Weight progress so encoder download contributes the tail end of the
     // 0–100% range. If there is no encoder, GGML alone is the full range.
@@ -67,32 +62,33 @@ pub async fn download_model(
     };
 
     // Inner block so we can clean up the temp file on any error
-    let download_result: std::result::Result<(PathBuf, u64), DownloadError> = async {
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .context("Failed to start download")?
-            .error_for_status()
-            .context("Server returned an error")?;
+    let download_result: Result<(PathBuf, u64)> = async {
+        let response = client.get(url).send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ModelError::HttpStatus {
+                status: status.as_u16(),
+                url: url.to_string(),
+            });
+        }
 
         let total_bytes = response.content_length().unwrap_or(0);
         let mut stream = response.bytes_stream();
         let mut file = tokio::fs::File::create(&temp_path)
             .await
-            .context("Failed to create temp file")?;
+            .map_err(io_at(temp_path.clone()))?;
 
         let mut downloaded: u64 = 0;
         let mut last_progress_pct: f64 = -1.0;
 
         while let Some(chunk) = stream.next().await {
-            if cancel.map_or(false, |c| c.is_cancelled()) {
-                return Err(DownloadError::Cancelled);
+            if cancel.is_some_and(|c| c.is_cancelled()) {
+                return Err(ModelError::Cancelled);
             }
-            let chunk = chunk.context("Download stream error")?;
+            let chunk = chunk?;
             file.write_all(&chunk)
                 .await
-                .context("Failed to write chunk")?;
+                .map_err(io_at(temp_path.clone()))?;
 
             downloaded += chunk.len() as u64;
 
@@ -119,31 +115,29 @@ pub async fn download_model(
             }
         }
 
-        file.flush().await.context("Failed to flush temp file")?;
+        file.flush().await.map_err(io_at(temp_path.clone()))?;
         drop(file);
 
         // Validate downloaded size against Content-Length
         if total_bytes > 0 && downloaded != total_bytes {
-            return Err(DownloadError::Other(anyhow::anyhow!(
-                "Incomplete download: got {} bytes, expected {} from Content-Length",
-                downloaded,
-                total_bytes,
-            )));
+            return Err(ModelError::SizeMismatch {
+                expected: total_bytes,
+                actual: downloaded,
+            });
         }
 
         // Validate against expected size from registry (approximate — allow 10% tolerance)
         if expected_bytes > 0 && (downloaded as f64) < (expected_bytes as f64 * 0.9) {
-            return Err(DownloadError::Other(anyhow::anyhow!(
-                "Downloaded file too small: got {} bytes, expected ~{} bytes",
-                downloaded,
-                expected_bytes,
-            )));
+            return Err(ModelError::SizeMismatch {
+                expected: expected_bytes,
+                actual: downloaded,
+            });
         }
 
         // Rename temp file to final path (atomic on same filesystem)
         tokio::fs::rename(&temp_path, &dest_path)
             .await
-            .context("Failed to rename downloaded file")?;
+            .map_err(io_at(dest_path.clone()))?;
 
         log::info!(
             "Model {} downloaded successfully ({} bytes)",
@@ -171,9 +165,7 @@ pub async fn download_model(
     // cleaned up by the caller's normal cancel flow.
     if let Some(spec) = encoder {
         let encoder_dir_name = encoder_dir_name_from_filename(filename);
-        let encoder_dest = super::storage::models_dir()
-            .map_err(DownloadError::Other)?
-            .join(&encoder_dir_name);
+        let encoder_dest = super::storage::models_dir()?.join(&encoder_dir_name);
 
         if encoder_dest.exists() {
             log::info!(
@@ -194,19 +186,16 @@ pub async fn download_model(
             .await
             {
                 Ok(()) => {
-                    log::info!(
-                        "CoreML encoder unpacked at {}",
-                        encoder_dest.display()
-                    );
+                    log::info!("CoreML encoder unpacked at {}", encoder_dest.display());
                 }
-                Err(DownloadError::Cancelled) => {
+                Err(ModelError::Cancelled) => {
                     // Cancellation during encoder fetch: also remove the
                     // GGML we already wrote, so a re-download starts clean.
                     let _ = tokio::fs::remove_dir_all(&encoder_dest).await;
                     let _ = tokio::fs::remove_file(&final_path).await;
-                    return Err(DownloadError::Cancelled);
+                    return Err(ModelError::Cancelled);
                 }
-                Err(DownloadError::Other(e)) => {
+                Err(e) => {
                     log::warn!(
                         "CoreML encoder fetch failed for {} ({}). Model will run on Metal without ANE acceleration.",
                         model_id,
@@ -237,8 +226,8 @@ pub async fn download_encoder_only(
     expected_bytes: u64,
     encoder_dest: &Path,
     cancel: Option<&CancellationToken>,
-) -> std::result::Result<(), DownloadError> {
-    let client = build_client().map_err(DownloadError::Other)?;
+) -> Result<()> {
+    let client = build_client()?;
     if encoder_dest.exists() {
         log::info!(
             "Removing existing encoder dir before refetch: {}",
@@ -262,11 +251,12 @@ pub async fn download_encoder_only(
 }
 
 fn build_client() -> Result<reqwest::Client> {
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(constants::DOWNLOAD_CONNECT_TIMEOUT_SECS))
+    Ok(reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(
+            constants::DOWNLOAD_CONNECT_TIMEOUT_SECS,
+        ))
         .read_timeout(Duration::from_secs(constants::DOWNLOAD_READ_TIMEOUT_SECS))
-        .build()
-        .context("Failed to create HTTP client")
+        .build()?)
 }
 
 /// whisper.cpp looks for a CoreML encoder at `<ggml-name>-encoder.mlmodelc/`
@@ -277,6 +267,10 @@ pub fn encoder_dir_name_from_filename(ggml_filename: &str) -> String {
     format!("{}-encoder.mlmodelc", stem)
 }
 
+// 8 args is one over the clippy default; refactoring into a struct here
+// would just shuffle fields around — every parameter is independently
+// supplied at the single call site and there's no natural grouping.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_and_unpack_encoder(
     app: &AppHandle,
     model_id: &str,
@@ -286,16 +280,17 @@ async fn fetch_and_unpack_encoder(
     client: &reqwest::Client,
     ggml_progress_share: f64,
     cancel: Option<&CancellationToken>,
-) -> std::result::Result<(), DownloadError> {
+) -> Result<()> {
     log::info!("Downloading CoreML encoder for {} from {}", model_id, url);
 
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .context("Failed to start encoder download")?
-        .error_for_status()
-        .context("Encoder server returned an error")?;
+    let response = client.get(url).send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ModelError::HttpStatus {
+            status: status.as_u16(),
+            url: url.to_string(),
+        });
+    }
 
     let total_bytes = response.content_length().unwrap_or(expected_bytes);
     let mut stream = response.bytes_stream();
@@ -304,10 +299,10 @@ async fn fetch_and_unpack_encoder(
     let mut last_progress_pct: f64 = -1.0;
 
     while let Some(chunk) = stream.next().await {
-        if cancel.map_or(false, |c| c.is_cancelled()) {
-            return Err(DownloadError::Cancelled);
+        if cancel.is_some_and(|c| c.is_cancelled()) {
+            return Err(ModelError::Cancelled);
         }
-        let chunk = chunk.context("Encoder download stream error")?;
+        let chunk = chunk?;
         buf.extend_from_slice(&chunk);
         downloaded += chunk.len() as u64;
 
@@ -318,8 +313,8 @@ async fn fetch_and_unpack_encoder(
         } else {
             0.0
         };
-        let scaled_pct = ggml_progress_share * 100.0
-            + encoder_pct * (1.0 - ggml_progress_share) * 100.0;
+        let scaled_pct =
+            ggml_progress_share * 100.0 + encoder_pct * (1.0 - ggml_progress_share) * 100.0;
 
         if (scaled_pct - last_progress_pct) >= 1.0 {
             last_progress_pct = scaled_pct;
@@ -337,28 +332,33 @@ async fn fetch_and_unpack_encoder(
     }
 
     if total_bytes > 0 && downloaded != total_bytes {
-        return Err(DownloadError::Other(anyhow::anyhow!(
-            "Incomplete encoder download: got {} bytes, expected {}",
-            downloaded,
-            total_bytes,
-        )));
+        return Err(ModelError::SizeMismatch {
+            expected: total_bytes,
+            actual: downloaded,
+        });
     }
 
     // Unpack into a temp dir adjacent to the destination, then rename
     // so a half-extracted directory never gets picked up by whisper.cpp.
-    let parent = dest_dir
-        .parent()
-        .context("Encoder destination has no parent directory")?;
+    let parent = dest_dir.parent().ok_or_else(|| {
+        ModelError::EncoderInvalid(format!(
+            "encoder destination {} has no parent directory",
+            dest_dir.display()
+        ))
+    })?;
     let temp_dir = parent.join(format!(
         ".{}.unpacking",
-        dest_dir.file_name().and_then(|n| n.to_str()).unwrap_or("encoder")
+        dest_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("encoder")
     ));
     if temp_dir.exists() {
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     }
     tokio::fs::create_dir_all(&temp_dir)
         .await
-        .context("Failed to create encoder unpack dir")?;
+        .map_err(io_at(temp_dir.clone()))?;
 
     // zip crate is sync, so do the extraction on a blocking thread.
     // Note: cancellation is not honored during this stage — unzip runs to
@@ -368,13 +368,18 @@ async fn fetch_and_unpack_encoder(
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
-        .context("Encoder destination has no filename")?;
+        .ok_or_else(|| {
+            ModelError::EncoderInvalid(format!(
+                "encoder destination {} has no filename",
+                dest_dir.display()
+            ))
+        })?;
     let dest_name_for_task = dest_name.clone();
     tokio::task::spawn_blocking(move || -> Result<()> {
         unzip_into(&buf, &temp_dir_clone, &dest_name_for_task)
     })
     .await
-    .context("Encoder unzip task panicked")??;
+    .map_err(|e| ModelError::EncoderInvalid(format!("unzip task panicked: {e}")))??;
 
     // Locate the .mlmodelc directory inside the unpacked tree (the zip may
     // include a top-level wrapper folder).
@@ -386,7 +391,7 @@ async fn fetch_and_unpack_encoder(
     }
     tokio::fs::rename(&unpacked, dest_dir)
         .await
-        .context("Failed to move encoder into place")?;
+        .map_err(io_at(dest_dir.to_path_buf()))?;
 
     // Clean up any leftover scaffolding from the temp dir.
     let _ = tokio::fs::remove_dir_all(&temp_dir).await;
@@ -396,8 +401,8 @@ async fn fetch_and_unpack_encoder(
         .iter()
         .any(|m| dest_dir.join(m).exists());
     if !has_marker {
-        return Err(DownloadError::Other(anyhow::anyhow!(
-            "Unpacked encoder at {} is missing expected CoreML markers",
+        return Err(ModelError::EncoderInvalid(format!(
+            "unpacked encoder at {} is missing expected CoreML markers",
             dest_dir.display()
         )));
     }
@@ -407,32 +412,30 @@ async fn fetch_and_unpack_encoder(
 
 fn unzip_into(zip_bytes: &[u8], temp_dir: &Path, _dest_name: &str) -> Result<()> {
     let cursor = Cursor::new(zip_bytes);
-    let mut archive = zip::ZipArchive::new(cursor).context("Failed to open zip archive")?;
+    let mut archive = zip::ZipArchive::new(cursor)?;
 
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).context("Failed to read zip entry")?;
+        let mut entry = archive.by_index(i)?;
         let entry_path = match entry.enclosed_name() {
             Some(p) => temp_dir.join(p),
             None => continue, // skip suspicious entries (zip-slip guard)
         };
 
         if entry.is_dir() {
-            std::fs::create_dir_all(&entry_path).context("Failed to create dir")?;
+            std::fs::create_dir_all(&entry_path).map_err(io_at(entry_path.clone()))?;
             continue;
         }
 
         if let Some(parent) = entry_path.parent() {
-            std::fs::create_dir_all(parent).context("Failed to create parent dir")?;
+            std::fs::create_dir_all(parent).map_err(io_at(parent.to_path_buf()))?;
         }
 
-        let mut out = std::fs::File::create(&entry_path)
-            .context(format!("Failed to create {}", entry_path.display()))?;
+        let mut out = std::fs::File::create(&entry_path).map_err(io_at(entry_path.clone()))?;
         let mut data = Vec::with_capacity(entry.size() as usize);
         entry
             .read_to_end(&mut data)
-            .context("Failed to read zip entry contents")?;
-        std::io::copy(&mut Cursor::new(&data), &mut out)
-            .context("Failed to write extracted file")?;
+            .map_err(io_at(entry_path.clone()))?;
+        std::io::copy(&mut Cursor::new(&data), &mut out).map_err(io_at(entry_path))?;
     }
 
     Ok(())
@@ -446,8 +449,8 @@ fn locate_mlmodelc(temp_dir: &Path, dest_name: &str) -> Result<PathBuf> {
     }
 
     // Otherwise scan one level deep for any *.mlmodelc directory.
-    for entry in std::fs::read_dir(temp_dir).context("Failed to read encoder temp dir")? {
-        let entry = entry?;
+    for entry in std::fs::read_dir(temp_dir).map_err(io_at(temp_dir.to_path_buf()))? {
+        let entry = entry.map_err(io_at(temp_dir.to_path_buf()))?;
         let path = entry.path();
         if path.is_dir()
             && path
@@ -460,8 +463,8 @@ fn locate_mlmodelc(temp_dir: &Path, dest_name: &str) -> Result<PathBuf> {
         }
         // Some zips wrap the .mlmodelc in another folder.
         if path.is_dir() {
-            for inner in std::fs::read_dir(&path)? {
-                let inner = inner?;
+            for inner in std::fs::read_dir(&path).map_err(io_at(path.clone()))? {
+                let inner = inner.map_err(io_at(path.clone()))?;
                 let inner_path = inner.path();
                 if inner_path.is_dir()
                     && inner_path
@@ -476,5 +479,8 @@ fn locate_mlmodelc(temp_dir: &Path, dest_name: &str) -> Result<PathBuf> {
         }
     }
 
-    anyhow::bail!("No .mlmodelc directory found in unpacked encoder archive")
+    Err(ModelError::EncoderInvalid(format!(
+        "no .mlmodelc directory found in unpacked encoder archive at {}",
+        temp_dir.display()
+    )))
 }

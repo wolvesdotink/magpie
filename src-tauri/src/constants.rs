@@ -8,8 +8,7 @@ pub const CLIPBOARD_RESTORE_DELAY_MS: u64 = 150;
 pub const DEFAULT_WHISPER_THREADS: i32 = 4;
 
 /// Model download base URL (HuggingFace)
-pub const MODEL_BASE_URL: &str =
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+pub const MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 /// Distil-Whisper variants live in their own HuggingFace repos because the
 /// distillations were not folded back into ggerganov/whisper.cpp.

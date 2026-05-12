@@ -8,7 +8,7 @@ use tauri::{
 };
 
 use crate::models::{registry, storage};
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 use crate::transcription::backend::TranscriptionBackend;
 use crate::transcription::whisper_backend::WhisperBackend;
 
@@ -89,7 +89,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
     // encoder and swaps the WhisperContext, which would conflict with an
     // in-flight inference). Disabled but still visible otherwise so the user
     // sees that the option exists.
-    let backend_loaded = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
+    let backend_loaded = lock_or_recover(&state.backend).is_some();
     let idle = !state.is_recording() && !state.is_processing();
     let repair_enabled = backend_loaded && idle;
     let repair = MenuItem::with_id(
@@ -137,13 +137,7 @@ fn build_model_submenu(
 ) -> Result<Submenu<tauri::Wry>, Box<dyn std::error::Error>> {
     let all_models = registry::get_available_models();
     let downloaded_filenames = storage::list_downloaded_models().unwrap_or_default();
-    let selected_model_id = match state.settings.lock() {
-        Ok(settings) => settings.selected_model.clone(),
-        Err(e) => {
-            log::error!("Settings mutex poisoned in tray: {}", e);
-            None
-        }
-    };
+    let selected_model_id = lock_or_recover(&state.settings).selected_model.clone();
 
     let submenu = Submenu::with_id(app, "model-submenu", "Model", true)?;
 
@@ -202,16 +196,23 @@ fn handle_model_selection(app: &AppHandle, model_id: &str) {
 
     match WhisperBackend::load(&path) {
         Ok(backend) => {
+            // Each lock scope drops its guard before the next acquires —
+            // settings(#1), backend/current_model_path(#2) are touched in
+            // *reverse* protocol order here, which is safe ONLY because
+            // the guards never co-exist. If a future refactor merges any
+            // two of these scopes into one, the merged scope MUST acquire
+            // settings (rank 1) first to stay protocol-compliant. See
+            // `state::AppState` lock-ordering doc.
             {
-                let mut slot = state.backend.lock().unwrap();
+                let mut slot = lock_or_recover(&state.backend);
                 *slot = Some(Arc::new(backend) as Arc<dyn TranscriptionBackend>);
             }
             {
-                let mut model_path = state.current_model_path.lock().unwrap();
+                let mut model_path = lock_or_recover(&state.current_model_path);
                 *model_path = Some(path);
             }
             {
-                let mut settings = state.settings.lock().unwrap();
+                let mut settings = lock_or_recover(&state.settings);
                 settings.selected_model = Some(model_id.to_string());
                 if let Err(e) = settings.save() {
                     log::error!("Failed to save settings: {}", e);

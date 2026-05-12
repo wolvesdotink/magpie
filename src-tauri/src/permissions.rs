@@ -35,7 +35,7 @@ pub fn microphone_authorization_status() -> MicrophoneAuthStatus {
 
         // AVMediaTypeAudio is the NSString @"soun"
         let media_type: *mut objc::runtime::Object =
-            msg_send![class!(NSString), stringWithUTF8String: b"soun\0".as_ptr()];
+            msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
 
         let status: i64 = msg_send![cls, authorizationStatusForMediaType: media_type];
 
@@ -78,7 +78,7 @@ pub fn request_microphone_access() -> bool {
         };
 
         let media_type: *mut objc::runtime::Object =
-            msg_send![class!(NSString), stringWithUTF8String: b"soun\0".as_ptr()];
+            msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
 
         let block = block::ConcreteBlock::new(move |granted: bool| {
             let _ = tx.send(granted);

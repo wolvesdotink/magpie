@@ -73,9 +73,7 @@ impl WhisperBackend {
         let coreml_present = model_path
             .file_stem()
             .and_then(|s| s.to_str())
-            .map(|stem| {
-                model_path.with_file_name(format!("{}-encoder.mlmodelc", stem))
-            })
+            .map(|stem| model_path.with_file_name(format!("{}-encoder.mlmodelc", stem)))
             .map(|p| p.exists())
             .unwrap_or(false);
         let coreml_status = if disable_coreml {

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, WebviewWindow, window::Color};
+use tauri::{window::Color, AppHandle, Manager, WebviewWindow};
 
 /// Configure the overlay window after creation.
 /// Sets click-through and positions it centered at top of screen.
@@ -126,8 +126,7 @@ fn configure_for_fullscreen_spaces(window: &WebviewWindow) {
         }
     };
 
-    let behavior: u64 =
-        CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY | STATIONARY | IGNORES_CYCLE;
+    let behavior: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY | STATIONARY | IGNORES_CYCLE;
     unsafe {
         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
         let _: () = msg_send![ns_window, setLevel: NS_SCREEN_SAVER_WINDOW_LEVEL];
@@ -211,8 +210,6 @@ fn center_overlay_horizontally(window: &WebviewWindow) {
         let window_height = 84.0; // logical pixels, matches tauri.conf.json
         let x = ((screen_width as f64 / scale) - window_width) / 2.0;
         let y = (screen_height as f64 / scale) - window_height - 38.0;
-        let _ = window.set_position(tauri::Position::Logical(
-            tauri::LogicalPosition::new(x, y),
-        ));
+        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
     }
 }

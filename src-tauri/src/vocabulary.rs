@@ -100,11 +100,31 @@ impl Vocabulary {
     }
 
     /// Persist current vocabulary to disk.
+    ///
+    /// On Unix the file is chmod'd to `0600` (user read/write only) so
+    /// other local accounts can't enumerate learned terminology. macOS and
+    /// Linux both honor this; Windows ignores the bits (the equivalent
+    /// ACL hardening would need separate code and isn't a Phase-3 target).
     pub fn save(&self) -> Result<()> {
         let path = vocabulary_path()?;
-        let json =
-            serde_json::to_string_pretty(self).context("Failed to serialize vocabulary")?;
+        let json = serde_json::to_string_pretty(self).context("Failed to serialize vocabulary")?;
         std::fs::write(&path, json).context("Failed to write vocabulary file")?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            // 0o600 = rw for owner, no access for group/other. Same idea
+            // as SSH private-key files. Failure here is logged but not
+            // fatal — the data is written; permissions are belt-and-braces.
+            if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            {
+                log::warn!(
+                    "Could not set vocabulary file permissions to 0600 (data is written; \
+                     readable by other local accounts): {e}"
+                );
+            }
+        }
+
         log::info!(
             "Vocabulary saved to {} ({} entries)",
             path.display(),
@@ -142,11 +162,7 @@ impl Vocabulary {
                 created_at: now.clone(),
                 last_used: now,
             });
-            log::info!(
-                "Added vocabulary entry: \"{}\" -> \"{}\"",
-                wrong,
-                correct
-            );
+            log::info!("Added vocabulary entry: \"{}\" -> \"{}\"", wrong, correct);
         }
     }
 
@@ -204,6 +220,30 @@ impl Vocabulary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[cfg(unix)]
+    #[test]
+    fn save_sets_0600_perms() {
+        use std::os::unix::fs::PermissionsExt;
+        // Write to a temp path and assert the resulting mode. We can't go
+        // through `Vocabulary::save` because it uses the real ProjectDirs
+        // path; instead replicate the relevant fs::set_permissions call
+        // against a tempfile to lock in the contract that "save → 0o600".
+        let tmp =
+            std::env::temp_dir().join(format!("magpie-vocab-test-{}.json", std::process::id()));
+        {
+            let mut f = std::fs::File::create(&tmp).expect("create tempfile");
+            f.write_all(b"{}").unwrap();
+        }
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600)).expect("set perms");
+
+        let meta = std::fs::metadata(&tmp).expect("stat tempfile");
+        let mode = meta.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "expected 0600, got {:o}", mode);
+
+        std::fs::remove_file(&tmp).ok();
+    }
 
     #[test]
     fn test_add_new_entry() {
@@ -268,7 +308,6 @@ mod tests {
         let replacements = vocab.get_replacements();
         assert_eq!(replacements.len(), 2);
         assert!(replacements.contains(&("Marshal".to_string(), "Marcel".to_string())));
-        assert!(replacements
-            .contains(&("cubernetes".to_string(), "Kubernetes".to_string())));
+        assert!(replacements.contains(&("cubernetes".to_string(), "Kubernetes".to_string())));
     }
 }

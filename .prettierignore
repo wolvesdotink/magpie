@@ -1,0 +1,7 @@
+dist
+dist-release
+node_modules
+src-tauri/target
+src-tauri/gen
+bun.lockb
+*.lock

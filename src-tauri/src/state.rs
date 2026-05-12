@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use cpal::Stream;
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
+use parking_lot::{Mutex, MutexGuard};
 
 use tokio::sync::mpsc;
 
+use crate::audio::AudioRingBuffer;
 use crate::hotkey::FnKeyMonitorHandle;
 use crate::recording::RecordingCommand;
 use crate::settings::UserSettings;
@@ -16,14 +18,51 @@ use crate::transcription::backend::{CancellationToken, TranscriptionBackend};
 use crate::transcription::streaming::StreamingHandle;
 use crate::vocabulary::Vocabulary;
 
-/// Shared application state managed by Tauri
+/// Shared application state managed by Tauri.
+///
+/// # Lock-ordering protocol
+///
+/// Holding more than one [`AppState`] mutex at the same time is rare but
+/// occasionally necessary (e.g. settings save while writing a model path).
+/// When it happens, locks MUST be acquired in the order listed below.
+/// Releasing order is unconstrained; acquisition order alone prevents
+/// classic AB-BA deadlocks.
+///
+/// 1. `settings`
+/// 2. `backend`, `current_model_path` (always together when both are
+///    held; treated as one rank because the backend swap is conceptually
+///    a path-and-loaded-object pair)
+/// 3. `audio_buffer`
+/// 4. `capture_sample_rate`
+/// 5. `active_stream`
+/// 6. `streaming_handle`
+/// 7. `last_transcription`
+/// 8. `vocabulary`
+/// 9. `llama_backend`, `correction_model`, `current_correction_model_path`
+///    (locked together when reloading correction models)
+/// 10. `active_downloads`
+/// 11. `pending_reload`
+/// 12. `fn_key_monitor`, `recording_tx`, `current_shortcut` (orchestration
+///     handles; rarely held with anything else)
+///
+/// The atomic fields (`recording`, `processing`, `amplitude_rms`,
+/// `suppress_hide`) are lock-free and have no ordering requirement.
+///
+/// If you find yourself needing to acquire two locks in the wrong order:
+/// (a) extract the value from the higher-rank lock into a local first,
+/// (b) drop that guard before acquiring the lower-rank lock, or
+/// (c) update this comment with a justification before merging.
 pub struct AppState {
     /// Whether we are currently recording audio
     pub recording: AtomicBool,
     /// Whether we are currently processing/transcribing
     pub processing: AtomicBool,
-    /// Accumulated PCM samples from the microphone (native sample rate)
-    pub audio_buffer: Mutex<Vec<f32>>,
+    /// Accumulated PCM samples from the microphone (native sample rate).
+    /// Bounded ring buffer — see [`AudioRingBuffer::MAX_BUFFER_SAMPLES`]. A
+    /// recording longer than the cap discards the oldest samples; the
+    /// `has_overflowed` flag stays set so the UI can surface a truncation
+    /// hint.
+    pub audio_buffer: Mutex<AudioRingBuffer>,
     /// The sample rate of the captured audio
     pub capture_sample_rate: Mutex<u32>,
     /// The active cpal input stream (dropped to stop recording)
@@ -82,8 +121,12 @@ pub struct AppState {
     pub active_downloads: Mutex<HashMap<String, CancellationToken>>,
 }
 
-// Safety: Stream is Send but not Sync by default in cpal,
-// but we only access it behind a Mutex
+// `cpal::Stream` contains C function pointers (FnMut callbacks) that are
+// neither `Send` nor `Sync`. We only ever read/write the stream through the
+// `Mutex` guard, and the callbacks themselves run on cpal's own audio
+// thread (never the caller's), so promoting `AppState` to Send + Sync is
+// safe in practice. This unsafe impl was present pre-Phase-2 with the
+// std::sync version too — parking_lot doesn't change the requirement.
 unsafe impl Send for AppState {}
 unsafe impl Sync for AppState {}
 
@@ -92,7 +135,7 @@ impl AppState {
         Self {
             recording: AtomicBool::new(false),
             processing: AtomicBool::new(false),
-            audio_buffer: Mutex::new(Vec::new()),
+            audio_buffer: Mutex::new(AudioRingBuffer::default()),
             capture_sample_rate: Mutex::new(44_100),
             active_stream: Mutex::new(None),
             backend: Mutex::new(None),
@@ -142,5 +185,71 @@ impl AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Acquire a `Mutex` lock.
+///
+/// parking_lot mutexes do not poison on panic — a thread that panics while
+/// holding the lock just drops the guard, and the next acquirer gets it as
+/// usual. So this is a thin wrapper over `parking_lot::Mutex::lock` whose
+/// real job is to **document the convention** used throughout the codebase
+/// and to give us a single place to add tracing / contention diagnostics
+/// later if needed.
+///
+/// Keep using this helper at every call site rather than `m.lock()`
+/// directly: it keeps the call shape uniform and lets us swap behavior in
+/// one place if we want timing/instrumentation later.
+#[inline]
+pub fn lock_or_recover<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::thread;
+
+    #[test]
+    fn lock_or_recover_returns_guard() {
+        let m = Mutex::new(42i32);
+        let g = lock_or_recover(&m);
+        assert_eq!(*g, 42);
+    }
+
+    #[test]
+    fn parking_lot_mutex_does_not_poison_on_panic() {
+        // parking_lot's whole point: a panic while holding the lock does
+        // not poison the mutex. The next acquirer sees the post-panic state.
+        let m = Arc::new(Mutex::new(0i32));
+        let m_clone = Arc::clone(&m);
+        let _ = thread::spawn(move || {
+            let mut g = m_clone.lock();
+            *g = 99;
+            panic!("intentional panic; should not poison");
+        })
+        .join();
+
+        // No `is_poisoned` on parking_lot mutexes — there's nothing to poison.
+        let g = lock_or_recover(&m);
+        assert_eq!(*g, 99);
+    }
+
+    #[test]
+    fn appstate_default_is_idle() {
+        let s = AppState::default();
+        assert!(!s.is_recording());
+        assert!(!s.is_processing());
+        assert_eq!(s.get_amplitude(), 0.0);
+    }
+
+    #[test]
+    fn amplitude_round_trips_through_atomic() {
+        let s = AppState::default();
+        s.set_amplitude(0.5);
+        assert!((s.get_amplitude() - 0.5).abs() < f32::EPSILON);
+        s.set_amplitude(0.0);
+        assert_eq!(s.get_amplitude(), 0.0);
     }
 }

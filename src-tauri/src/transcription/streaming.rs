@@ -21,7 +21,7 @@ use tokio::time::{sleep, Instant};
 
 use crate::audio;
 use crate::events::{self, event_names};
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 
 use super::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
 
@@ -69,7 +69,7 @@ async fn run_loop(
     cancel: CancellationToken,
     partial_cancel: CancellationToken,
 ) {
-    let mut last_processed_len: usize = 0;
+    let mut last_processed_samples: u64 = 0;
     let mut tick = Instant::now() + Duration::from_millis(PARTIAL_INTERVAL_MS);
 
     loop {
@@ -82,34 +82,25 @@ async fn run_loop(
         }
         tick = Instant::now() + Duration::from_millis(PARTIAL_INTERVAL_MS);
 
-        // Snapshot length under a brief lock; skip the cycle if no growth.
-        let current_len = match state.audio_buffer.lock() {
-            Ok(buf) => buf.len(),
-            Err(p) => p.into_inner().len(),
-        };
-        if current_len == last_processed_len {
+        // Snapshot under a brief lock; skip the cycle if no new audio since
+        // last decode. Uses samples_written (monotonic u64) rather than len()
+        // (plateaus at capacity) so the check still works after the ring
+        // buffer wraps.
+        let current_samples = lock_or_recover(&state.audio_buffer).samples_written();
+        if current_samples == last_processed_samples {
             continue;
         }
-        last_processed_len = current_len;
+        last_processed_samples = current_samples;
 
-        // Read sample rate, then clone the buffer (releasing the lock before
-        // inference). Cloning ~30s of f32 at 48kHz is < 6MB / sub-millisecond.
-        let sample_rate = match state.capture_sample_rate.lock() {
-            Ok(g) => *g,
-            Err(p) => *p.into_inner(),
-        };
-        let raw = match state.audio_buffer.lock() {
-            Ok(buf) => buf.clone(),
-            Err(p) => p.into_inner().clone(),
-        };
+        // Read sample rate, then snapshot the buffer (releasing the lock
+        // before inference). ~30 s of f32 at 48 kHz is < 6 MB / sub-ms.
+        let sample_rate = *lock_or_recover(&state.capture_sample_rate);
+        let raw = lock_or_recover(&state.audio_buffer).snapshot();
 
         // Clone the backend Arc out under a brief lock; bail if not loaded.
         // The lock is released before inference so cpal callbacks and other
         // backend readers (e.g. final-on-stop) never wait on the decode.
-        let backend = match state.backend.lock() {
-            Ok(g) => g.clone(),
-            Err(p) => p.into_inner().clone(),
-        };
+        let backend = lock_or_recover(&state.backend).clone();
         let Some(backend) = backend else {
             continue;
         };
@@ -119,11 +110,7 @@ async fn run_loop(
             continue;
         }
 
-        let language = state
-            .settings
-            .lock()
-            .ok()
-            .and_then(|s| s.language.clone());
+        let language = lock_or_recover(&state.settings).language.clone();
 
         if partial_cancel.is_cancelled() {
             break;
