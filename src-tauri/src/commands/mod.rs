@@ -78,12 +78,18 @@ pub async fn start_recording(
         log::debug!("Streaming worker not started: live preview disabled in settings");
     }
 
-    // Spawn amplitude emitter thread (20Hz = every 50ms)
+    // Spawn the amplitude emitter on the tokio runtime so the wake-ups are
+    // scheduled by the runtime rather than by `std::thread::sleep`. The task
+    // exits naturally when `is_recording()` flips back to false.
     {
         let emitter_app = app.clone();
         let emitter_state = state_arc.clone();
-        std::thread::spawn(move || {
+        tauri::async_runtime::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_millis(50));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
             while emitter_state.is_recording() {
+                ticker.tick().await;
                 let rms = emitter_state.get_amplitude();
 
                 // Scale and clamp: raw RMS from speech is typically 0.001–0.1.
@@ -99,18 +105,16 @@ pub async fn start_recording(
                         amplitude: normalized,
                     },
                 );
-
-                std::thread::sleep(std::time::Duration::from_millis(50));
             }
 
-            // Emit a final zero so the frontend can animate bars down to rest
+            // Emit a final zero so the frontend can animate bars down to rest.
             events::emit_event(
                 &emitter_app,
                 event_names::AUDIO_AMPLITUDE,
                 AudioAmplitudePayload { amplitude: 0.0 },
             );
 
-            log::debug!("Amplitude emitter thread exiting");
+            log::debug!("Amplitude emitter task exiting");
         });
     }
 
