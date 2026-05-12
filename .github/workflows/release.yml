@@ -70,7 +70,11 @@ name: release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      # `v*` (not `v*.*.*`) so we also match prerelease tags like
+      # `v0.1.18-beta.1`. Whether the workflow publishes as prerelease or
+      # stable is decided by the `tagmeta` step below based on the tag
+      # itself, not the trigger glob.
+      - 'v*'
   workflow_dispatch:
 
 # Cancel in-flight runs on the same ref so a quick re-tag doesn't queue duplicates.
@@ -176,6 +180,20 @@ jobs:
         run: |
           bash scripts/build-macos.sh --notarize --updater
 
+      # Tags shaped `vX.Y.Z-beta.N` ship to the beta channel; everything
+      # else (`vX.Y.Z`) is a stable release. Downstream steps read this
+      # output to flip the `prerelease` flag on the GH release and to
+      # decide whether to update the rolling `beta-channel` manifest.
+      - name: Detect channel from tag
+        id: tagmeta
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          if [[ "$TAG" == *"-beta."* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Stage every release asset under dist-release/ so the publish step has
       # one place to look. Also generates latest.json (the updater manifest).
       - name: Stage release assets
@@ -234,7 +252,7 @@ jobs:
           tag_name: v${{ steps.stage.outputs.version }}
           name: Magpie v${{ steps.stage.outputs.version }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
-          prerelease: false
+          prerelease: ${{ steps.tagmeta.outputs.prerelease }}
           fail_on_unmatched_files: true
           body: |
             Download `Magpie.dmg` below.
@@ -255,3 +273,28 @@ jobs:
             dist-release/Magpie.app.tar.gz
             dist-release/Magpie.app.tar.gz.sig
             dist-release/latest.json
+
+      # Beta channel: roll the manifest at the fixed tag `beta-channel` so
+      # the in-app updater (when set to the beta channel) has a stable URL
+      # to poll. GitHub's `/releases/latest/download/...` URL deliberately
+      # skips prereleases, which is why we need this dedicated rolling
+      # release instead of relying on the `latest` alias.
+      #
+      # The manifest's `url` field already points at the versioned tag's
+      # signed asset (Magpie.app.tar.gz at v<version>), so no DMG or
+      # tarball needs to be copied here — only the JSON pointer.
+      - name: Update rolling beta-channel manifest
+        if: steps.tagmeta.outputs.prerelease == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh release view beta-channel --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create beta-channel \
+              --repo "$GITHUB_REPOSITORY" \
+              --prerelease \
+              --title "Beta channel manifest" \
+              --notes "Rolling pointer to the latest beta release. Do not download from this release directly; install the latest beta from the versioned tag instead."
+          fi
+          gh release upload beta-channel dist-release/latest.json \
+            --repo "$GITHUB_REPOSITORY" --clobber

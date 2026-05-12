@@ -67,6 +67,10 @@ export interface UserSettings {
   /** User's custom global shortcut in Tauri format (e.g. "CmdOrCtrl+Shift+R").
    *  `null` = use the built-in default ("CmdOrCtrl+Shift+Space"). */
   customShortcut: string | null;
+  /** Which update channel the in-app updater polls. Default 'stable'.
+   *  Changes take effect on the next app launch (the updater plugin's
+   *  endpoint is set in Rust at startup and cannot be swapped live). */
+  updateChannel: 'stable' | 'beta';
 }
 
 export interface VocabularyEntry {

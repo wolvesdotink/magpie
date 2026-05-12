@@ -30,6 +30,19 @@ pub enum ActivationMode {
     Shortcut,
 }
 
+/// Which update channel the in-app updater polls. The value is read once
+/// at startup and used to pick the updater plugin's endpoint, so changes
+/// take effect on the next app launch.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    /// Curated stable releases. Only updates from non-prerelease tags.
+    #[default]
+    Stable,
+    /// Prerelease beta builds — newer, less tested.
+    Beta,
+}
+
 /// Persisted user settings
 ///
 /// `#[serde(default)]` on the struct means a settings JSON missing any field
@@ -74,6 +87,11 @@ pub struct UserSettings {
     /// default. Existing settings.json files without this field load as None.
     #[serde(default)]
     pub custom_shortcut: Option<String>,
+    /// Which update channel the in-app updater polls. Read once at app
+    /// startup; changing it requires a relaunch (the updater plugin's
+    /// endpoint is registered at init time and cannot be swapped live).
+    #[serde(default)]
+    pub update_channel: UpdateChannel,
 }
 
 impl Default for UserSettings {
@@ -98,6 +116,7 @@ impl Default for UserSettings {
             setup_complete: false,
             streaming_preview: false,
             custom_shortcut: None,
+            update_channel: UpdateChannel::Stable,
         }
     }
 }

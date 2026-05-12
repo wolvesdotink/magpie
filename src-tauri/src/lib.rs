@@ -84,11 +84,40 @@ pub fn run() {
     // @tauri-apps/plugin-updater and @tauri-apps/plugin-process; we only need
     // to register them on the Rust side here. Updates are signed/verified
     // against the public key in tauri.conf.json (plugins.updater.pubkey) and
-    // fetched from the configured endpoints (latest.json on GitHub releases).
+    // fetched from the endpoint picked here based on the user's channel.
+    //
+    // We read UserSettings off disk to decide between the stable and beta
+    // endpoints — AppState isn't `manage`d yet at this point in the
+    // builder. `UserSettings::load()` is cheap (JSON parse, file-cached by
+    // the OS) and AppState::new() will read the same file again moments
+    // later; the duplicate read isn't worth optimizing away.
+    //
+    // Toggling the channel in Settings requires an app relaunch because
+    // the Tauri JS plugin's check() does not accept an endpoints override
+    // (CheckOptions only exposes headers/timeout/proxy/target/allowDowngrades).
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        use crate::settings::{UpdateChannel, UserSettings};
+
+        let endpoint_url = match UserSettings::load().update_channel {
+            UpdateChannel::Beta => {
+                "https://github.com/wolvesdotink/magpie/releases/download/beta-channel/latest.json"
+            }
+            UpdateChannel::Stable => {
+                "https://github.com/wolvesdotink/magpie/releases/latest/download/latest.json"
+            }
+        };
+        let endpoint: tauri::Url = endpoint_url
+            .parse()
+            .expect("hardcoded updater endpoint URL is valid");
+
         builder = builder
-            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(
+                tauri_plugin_updater::Builder::new()
+                    .endpoints(vec![endpoint])
+                    .expect("setting hardcoded updater endpoint cannot fail")
+                    .build(),
+            )
             .plugin(tauri_plugin_process::init());
     }
 

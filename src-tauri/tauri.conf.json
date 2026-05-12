@@ -97,10 +97,7 @@
     "updater": {
       "active": true,
       "dialog": false,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzMzZDNjRDRDE5MUE3OUUKUldTZXA1SFJUTVkyb3dvUUVKdnEwQjEyOVZnbjZPaFJoQmMrR2V5Um9HeHAyMW9jUmhIcFZ0c0kK",
-      "endpoints": [
-        "https://github.com/wolvesdotink/magpie/releases/latest/download/latest.json"
-      ]
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzMzZDNjRDRDE5MUE3OUUKUldTZXA1SFJUTVkyb3dvUUVKdnEwQjEyOVZnbjZPaFJoQmMrR2V5Um9HeHAyMW9jUmhIcFZ0c0kK"
     }
   }
 }

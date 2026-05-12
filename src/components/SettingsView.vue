@@ -128,6 +128,11 @@ const SEARCH_INDEX: { section: SectionId; label: string; keywords: string }[] = 
     keywords: 'vocabulary manual word add custom',
   },
   { section: 'general', label: 'Launch at login', keywords: 'autostart startup login boot launch' },
+  {
+    section: 'general',
+    label: 'Receive beta updates',
+    keywords: 'beta channel prerelease updates opt-in early access',
+  },
   { section: 'updates', label: 'Updates', keywords: 'version update upgrade release changelog' },
 ];
 

@@ -157,6 +157,12 @@ async function updateSelectedModel(modelId: string) {
   await persist();
 }
 
+async function updateUpdateChannel(channel: 'stable' | 'beta') {
+  if (!settings.value) return;
+  settings.value = { ...settings.value, updateChannel: channel };
+  await persist();
+}
+
 async function reload() {
   loading.value = true;
   loadPromise = load();
@@ -190,6 +196,7 @@ export function useSettings() {
     updateSetupComplete,
     updateSelectedCorrectionModel,
     updateSelectedModel,
+    updateUpdateChannel,
     reload,
   };
 }
