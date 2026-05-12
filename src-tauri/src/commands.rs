@@ -12,7 +12,7 @@ use crate::events::{
 use crate::hotkey;
 use crate::models::{downloader, registry, storage};
 use crate::output;
-use crate::state::AppState;
+use crate::state::{lock_or_recover, AppState};
 use crate::transcription::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
 use crate::transcription::postprocess;
 use crate::transcription::streaming;
@@ -41,11 +41,11 @@ pub async fn start_recording(
         .map_err(|e| format!("Failed to start recording: {}", e))?;
 
     {
-        let mut sr = state.capture_sample_rate.lock().unwrap();
+        let mut sr = lock_or_recover(&state.capture_sample_rate);
         *sr = sample_rate;
     }
     {
-        let mut active = state.active_stream.lock().unwrap();
+        let mut active = lock_or_recover(&state.active_stream);
         *active = Some(stream);
     }
 
@@ -134,7 +134,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
 
     // Drop the stream to stop recording
     {
-        let mut active = state.active_stream.lock().unwrap();
+        let mut active = lock_or_recover(&state.active_stream);
         *active = None;
     }
 
@@ -169,13 +169,13 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
 
     // Get the audio buffer and sample rate
     let audio_data = {
-        let mut buffer = state.audio_buffer.lock().unwrap();
+        let mut buffer = lock_or_recover(&state.audio_buffer);
         let data = buffer.clone();
         buffer.clear();
         data
     };
 
-    let sample_rate = *state.capture_sample_rate.lock().unwrap();
+    let sample_rate = *lock_or_recover(&state.capture_sample_rate);
 
     log::info!(
         "Recorded {} samples ({:.1}s) at {} Hz",
@@ -196,12 +196,12 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
 
         // Get language setting and vocabulary data
         let language = {
-            let settings = state_arc.settings.lock().unwrap();
+            let settings = lock_or_recover(&state_arc.settings);
             settings.language.clone()
         };
 
         let (initial_prompt, vocab_replacements) = {
-            let vocab = state_arc.vocabulary.lock().unwrap();
+            let vocab = lock_or_recover(&state_arc.vocabulary);
             (vocab.get_initial_prompt_words(), vocab.get_replacements())
         };
 
@@ -236,7 +236,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
                     let duration_ms = out.duration_ms;
                     // Post-process
                     let (filler_words, remove_fillers) = {
-                        let settings = state_arc.settings.lock().unwrap();
+                        let settings = lock_or_recover(&state_arc.settings);
                         (settings.filler_words.clone(), settings.remove_fillers)
                     };
 
@@ -250,7 +250,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
                     // Self-correction cleanup (if enabled)
                     let text = {
                         let self_correction_enabled = {
-                            let settings = state_arc.settings.lock().unwrap();
+                            let settings = lock_or_recover(&state_arc.settings);
                             settings.self_correction
                         };
 
@@ -258,8 +258,8 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
                             tray::set_tray_status(&app_clone, "Magpie \u{2014} Cleaning up...");
                             events::emit_event(&app_clone, event_names::CORRECTION_STARTED, ());
 
-                            let backend_guard = state_arc.llama_backend.lock().unwrap();
-                            let model_guard = state_arc.correction_model.lock().unwrap();
+                            let backend_guard = lock_or_recover(&state_arc.llama_backend);
+                            let model_guard = lock_or_recover(&state_arc.correction_model);
 
                             if let (Some(ref backend), Some(ref model)) =
                                 (&*backend_guard, &*model_guard)
@@ -303,7 +303,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
                     if !text.is_empty() {
                         // Store last transcription
                         {
-                            let mut last = state_arc.last_transcription.lock().unwrap();
+                            let mut last = lock_or_recover(&state_arc.last_transcription);
                             *last = text.clone();
                         }
 
@@ -315,7 +315,7 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
 
                             // Start correction detection if vocabulary learning is enabled
                             let vocab_learning_enabled = {
-                                let settings = state_arc.settings.lock().unwrap();
+                                let settings = lock_or_recover(&state_arc.settings);
                                 settings.vocabulary_learning
                             };
                             if vocab_learning_enabled {
@@ -425,7 +425,7 @@ pub async fn cancel_recording(
 
     // Drop the audio stream — mirrors stop_recording's first step.
     {
-        let mut active = state.active_stream.lock().unwrap();
+        let mut active = lock_or_recover(&state.active_stream);
         *active = None;
     }
     state.set_recording(false);
@@ -447,7 +447,7 @@ pub async fn cancel_recording(
     // Discard the captured audio — the whole point of "cancel" is to make
     // sure nothing reaches the transcription pipeline.
     {
-        let mut buffer = state.audio_buffer.lock().unwrap();
+        let mut buffer = lock_or_recover(&state.audio_buffer);
         buffer.clear();
     }
 
@@ -514,7 +514,7 @@ fn unregister_escape_shortcut(app: &AppHandle) {
 #[tauri::command]
 pub fn get_app_state(state: State<'_, Arc<AppState>>) -> AppStatePayload {
     let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
-    let last_transcription = state.last_transcription.lock().unwrap().clone();
+    let last_transcription = lock_or_recover(&state.last_transcription).clone();
 
     AppStatePayload {
         recording: state.is_recording(),
@@ -560,7 +560,7 @@ pub async fn download_model(
     // the stream loop. Removed unconditionally on every exit path below.
     let cancel = CancellationToken::new();
     {
-        let mut active = state.active_downloads.lock().unwrap();
+        let mut active = lock_or_recover(&state.active_downloads);
         active.insert(model_id.clone(), cancel.clone());
     }
 
@@ -576,7 +576,7 @@ pub async fn download_model(
     .await;
 
     {
-        let mut active = state.active_downloads.lock().unwrap();
+        let mut active = lock_or_recover(&state.active_downloads);
         active.remove(&model_id);
     }
 
@@ -611,7 +611,7 @@ pub async fn download_model(
 
     // Persist the selection so the model auto-loads on next launch
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = lock_or_recover(&state.settings);
         settings.selected_model = Some(model_id.clone());
         if let Err(e) = settings.save() {
             log::error!("Failed to save settings: {}", e);
@@ -629,7 +629,7 @@ pub async fn download_model(
 /// between cancel and completion).
 #[tauri::command]
 pub fn cancel_download(state: State<'_, Arc<AppState>>, model_id: String) -> Result<(), String> {
-    let active = state.active_downloads.lock().unwrap();
+    let active = lock_or_recover(&state.active_downloads);
     if let Some(token) = active.get(&model_id) {
         token.cancel();
         log::info!("Cancel requested for download {}", model_id);
@@ -658,7 +658,7 @@ pub fn select_model(
 
     // Save preference
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = lock_or_recover(&state.settings);
         settings.selected_model = Some(model_id);
         if let Err(e) = settings.save() {
             log::error!("Failed to save settings: {}", e);
@@ -700,7 +700,7 @@ pub fn delete_model_file(
 
     // If the deleted model was the active one, clear the selection
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = lock_or_recover(&state.settings);
         if settings.selected_model.as_deref() == Some(&model_id) {
             settings.selected_model = None;
             if let Err(e) = settings.save() {
@@ -741,7 +741,7 @@ fn load_model_internal(
         *slot = Some(backend);
     }
     {
-        let mut model_path = state.current_model_path.lock().unwrap();
+        let mut model_path = lock_or_recover(&state.current_model_path);
         *model_path = Some(path.to_path_buf());
     }
 
@@ -760,7 +760,7 @@ fn load_model_internal(
 
 fn get_app_state_payload(state: &State<'_, Arc<AppState>>) -> AppStatePayload {
     let has_model = state.backend.lock().map(|g| g.is_some()).unwrap_or(false);
-    let last_transcription = state.last_transcription.lock().unwrap().clone();
+    let last_transcription = lock_or_recover(&state.last_transcription).clone();
 
     AppStatePayload {
         recording: state.is_recording(),
@@ -1130,7 +1130,7 @@ pub fn update_global_shortcut(
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, Arc<AppState>>) -> crate::settings::UserSettings {
-    state.settings.lock().unwrap().clone()
+    lock_or_recover(&state.settings).clone()
 }
 
 #[tauri::command]
@@ -1138,7 +1138,7 @@ pub fn update_settings(
     state: State<'_, Arc<AppState>>,
     mut settings: crate::settings::UserSettings,
 ) {
-    let mut current = state.settings.lock().unwrap();
+    let mut current = lock_or_recover(&state.settings);
     // Model selections are owned by download_model / select_model, not by
     // generic preference saves. A null in the incoming payload means "I
     // don't know / I didn't touch this", not "clear the selection" — so
@@ -1231,7 +1231,7 @@ pub async fn download_correction_model(
     // the stream loop. Removed unconditionally on every exit path below.
     let cancel = CancellationToken::new();
     {
-        let mut active = state.active_downloads.lock().unwrap();
+        let mut active = lock_or_recover(&state.active_downloads);
         active.insert(model_id.clone(), cancel.clone());
     }
 
@@ -1247,7 +1247,7 @@ pub async fn download_correction_model(
     .await;
 
     {
-        let mut active = state.active_downloads.lock().unwrap();
+        let mut active = lock_or_recover(&state.active_downloads);
         active.remove(&model_id);
     }
 
@@ -1286,7 +1286,7 @@ pub async fn download_correction_model(
 
     // Persist the selection so the correction model auto-loads on next launch
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = lock_or_recover(&state.settings);
         settings.selected_correction_model = Some(model_id.clone());
         if let Err(e) = settings.save() {
             log::error!("Failed to save settings: {}", e);
@@ -1315,7 +1315,7 @@ pub fn select_correction_model(
 
     // Save preference
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = lock_or_recover(&state.settings);
         settings.selected_correction_model = Some(model_id);
         if let Err(e) = settings.save() {
             log::error!("Failed to save settings: {}", e);
@@ -1338,7 +1338,7 @@ pub fn delete_correction_model_file(
 
     // If the deleted model was the active one, clear the selection and unload
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = lock_or_recover(&state.settings);
         if settings.selected_correction_model.as_deref() == Some(&model_id) {
             settings.selected_correction_model = None;
             if let Err(e) = settings.save() {
@@ -1347,12 +1347,12 @@ pub fn delete_correction_model_file(
         }
     }
     {
-        let current_path = state.current_correction_model_path.lock().unwrap();
+        let current_path = lock_or_recover(&state.current_correction_model_path);
         if current_path.is_some() {
             drop(current_path);
-            let mut cm = state.correction_model.lock().unwrap();
+            let mut cm = lock_or_recover(&state.correction_model);
             *cm = None;
-            let mut cp = state.current_correction_model_path.lock().unwrap();
+            let mut cp = lock_or_recover(&state.current_correction_model_path);
             *cp = None;
         }
     }
@@ -1375,7 +1375,7 @@ fn load_correction_model_internal(
 ) -> Result<(), String> {
     // Initialize llama backend if needed
     {
-        let mut backend_guard = state.llama_backend.lock().unwrap();
+        let mut backend_guard = lock_or_recover(&state.llama_backend);
         if backend_guard.is_none() {
             let backend = llama_cpp_2::llama_backend::LlamaBackend::init()
                 .map_err(|e| format!("Failed to init llama backend: {:?}", e))?;
@@ -1383,7 +1383,7 @@ fn load_correction_model_internal(
         }
     }
 
-    let backend_guard = state.llama_backend.lock().unwrap();
+    let backend_guard = lock_or_recover(&state.llama_backend);
     let backend = backend_guard
         .as_ref()
         .ok_or_else(|| "Llama backend not initialized".to_string())?;
@@ -1392,11 +1392,11 @@ fn load_correction_model_internal(
         .map_err(|e| format!("Failed to load correction model: {}", e))?;
 
     {
-        let mut cm = state.correction_model.lock().unwrap();
+        let mut cm = lock_or_recover(&state.correction_model);
         *cm = Some(model);
     }
     {
-        let mut cp = state.current_correction_model_path.lock().unwrap();
+        let mut cp = lock_or_recover(&state.current_correction_model_path);
         *cp = Some(path.to_path_buf());
     }
 
@@ -1416,7 +1416,7 @@ fn load_correction_model_internal(
 
 #[tauri::command]
 pub fn get_vocabulary(state: State<'_, Arc<AppState>>) -> Vec<VocabularyEntry> {
-    state.vocabulary.lock().unwrap().entries.clone()
+    lock_or_recover(&state.vocabulary).entries.clone()
 }
 
 #[tauri::command]
@@ -1425,7 +1425,7 @@ pub fn add_vocabulary_entry(
     wrong: String,
     correct: String,
 ) -> Result<(), String> {
-    let mut vocab = state.vocabulary.lock().unwrap();
+    let mut vocab = lock_or_recover(&state.vocabulary);
     vocab.add_or_update(&wrong, &correct, VocabularySource::Manual);
     vocab.save().map_err(|e| e.to_string())
 }
@@ -1435,14 +1435,14 @@ pub fn remove_vocabulary_entry(
     state: State<'_, Arc<AppState>>,
     wrong: String,
 ) -> Result<(), String> {
-    let mut vocab = state.vocabulary.lock().unwrap();
+    let mut vocab = lock_or_recover(&state.vocabulary);
     vocab.remove(&wrong);
     vocab.save().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn clear_vocabulary(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    let mut vocab = state.vocabulary.lock().unwrap();
+    let mut vocab = lock_or_recover(&state.vocabulary);
     vocab.entries.clear();
     vocab.save().map_err(|e| e.to_string())
 }
