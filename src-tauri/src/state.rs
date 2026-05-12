@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use cpal::Stream;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -142,5 +142,79 @@ impl AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Acquire a `Mutex` lock, recovering the guard if the mutex was poisoned by
+/// a previous panic. Used everywhere instead of `.lock().unwrap()` so a single
+/// crashing thread cannot cascade into "mutex poisoned" failures across the
+/// rest of the app.
+///
+/// Why this is safe in practice: every `AppState` field is independent state
+/// that we either rebuild on the next operation (recording flags, audio
+/// buffer) or treat as read-only after init (backend, settings). A
+/// poison-recovery read may briefly observe a half-modified state, but the
+/// alternative — propagating a `PoisonError` to the UI — is strictly worse.
+///
+/// If you need to *fail* on poison rather than recover, use `Mutex::lock`
+/// directly and handle the error explicitly.
+#[inline]
+pub fn lock_or_recover<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    match m.lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            tracing::warn!(
+                target = "magpie_lib::state",
+                "Mutex was poisoned; recovering guard. A prior panic left state inconsistent."
+            );
+            poisoned.into_inner()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::thread;
+
+    #[test]
+    fn lock_or_recover_returns_guard_when_healthy() {
+        let m = Mutex::new(42i32);
+        let g = lock_or_recover(&m);
+        assert_eq!(*g, 42);
+    }
+
+    #[test]
+    fn lock_or_recover_recovers_from_poison() {
+        let m = Arc::new(Mutex::new(0i32));
+        let m_clone = Arc::clone(&m);
+        let _ = thread::spawn(move || {
+            let mut g = m_clone.lock().unwrap();
+            *g = 99;
+            panic!("intentional poison for test");
+        })
+        .join();
+
+        assert!(m.is_poisoned());
+        let g = lock_or_recover(&m);
+        assert_eq!(*g, 99);
+    }
+
+    #[test]
+    fn appstate_default_is_idle() {
+        let s = AppState::default();
+        assert!(!s.is_recording());
+        assert!(!s.is_processing());
+        assert_eq!(s.get_amplitude(), 0.0);
+    }
+
+    #[test]
+    fn amplitude_round_trips_through_atomic() {
+        let s = AppState::default();
+        s.set_amplitude(0.5);
+        assert!((s.get_amplitude() - 0.5).abs() < f32::EPSILON);
+        s.set_amplitude(0.0);
+        assert_eq!(s.get_amplitude(), 0.0);
     }
 }
