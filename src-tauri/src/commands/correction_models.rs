@@ -222,6 +222,7 @@ fn load_correction_model_internal(
     }
 
     log::info!("Correction model {} loaded successfully", model_id);
+    drop(backend_guard); // release rank-9 before re-entering rank-2 via get_app_state_payload
 
     // Emit state change
     events::emit_event(

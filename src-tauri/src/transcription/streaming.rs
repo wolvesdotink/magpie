@@ -69,7 +69,7 @@ async fn run_loop(
     cancel: CancellationToken,
     partial_cancel: CancellationToken,
 ) {
-    let mut last_processed_len: usize = 0;
+    let mut last_processed_samples: u64 = 0;
     let mut tick = Instant::now() + Duration::from_millis(PARTIAL_INTERVAL_MS);
 
     loop {
@@ -82,12 +82,15 @@ async fn run_loop(
         }
         tick = Instant::now() + Duration::from_millis(PARTIAL_INTERVAL_MS);
 
-        // Snapshot length under a brief lock; skip the cycle if no growth.
-        let current_len = lock_or_recover(&state.audio_buffer).len();
-        if current_len == last_processed_len {
+        // Snapshot under a brief lock; skip the cycle if no new audio since
+        // last decode. Uses samples_written (monotonic u64) rather than len()
+        // (plateaus at capacity) so the check still works after the ring
+        // buffer wraps.
+        let current_samples = lock_or_recover(&state.audio_buffer).samples_written();
+        if current_samples == last_processed_samples {
             continue;
         }
-        last_processed_len = current_len;
+        last_processed_samples = current_samples;
 
         // Read sample rate, then snapshot the buffer (releasing the lock
         // before inference). ~30 s of f32 at 48 kHz is < 6 MB / sub-ms.
