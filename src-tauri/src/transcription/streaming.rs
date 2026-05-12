@@ -89,10 +89,10 @@ async fn run_loop(
         }
         last_processed_len = current_len;
 
-        // Read sample rate, then clone the buffer (releasing the lock before
-        // inference). Cloning ~30s of f32 at 48kHz is < 6MB / sub-millisecond.
+        // Read sample rate, then snapshot the buffer (releasing the lock
+        // before inference). ~30 s of f32 at 48 kHz is < 6 MB / sub-ms.
         let sample_rate = *lock_or_recover(&state.capture_sample_rate);
-        let raw = lock_or_recover(&state.audio_buffer).clone();
+        let raw = lock_or_recover(&state.audio_buffer).snapshot();
 
         // Clone the backend Arc out under a brief lock; bail if not loaded.
         // The lock is released before inference so cpal callbacks and other

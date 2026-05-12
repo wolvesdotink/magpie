@@ -59,7 +59,7 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
                 let rms = (sum_sq / mono.len().max(1) as f32).sqrt();
                 state_clone.set_amplitude(rms);
                 let mut buffer = lock_or_recover(&state_clone.audio_buffer);
-                buffer.extend_from_slice(&mono);
+                buffer.push_slice(&mono);
             },
             err_fn,
             None,
@@ -76,7 +76,7 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
                     let rms = (sum_sq / mono.len().max(1) as f32).sqrt();
                     state_clone2.set_amplitude(rms);
                     let mut buffer = lock_or_recover(&state_clone2.audio_buffer);
-                    buffer.extend_from_slice(&mono);
+                    buffer.push_slice(&mono);
                 },
                 err_fn,
                 None,
@@ -96,7 +96,7 @@ pub fn start_recording(state: &Arc<AppState>) -> Result<(Stream, u32)> {
                     let rms = (sum_sq / mono.len().max(1) as f32).sqrt();
                     state_clone2.set_amplitude(rms);
                     let mut buffer = lock_or_recover(&state_clone2.audio_buffer);
-                    buffer.extend_from_slice(&mono);
+                    buffer.push_slice(&mono);
                 },
                 err_fn,
                 None,

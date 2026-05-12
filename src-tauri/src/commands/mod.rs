@@ -168,10 +168,20 @@ pub async fn stop_recording(app: AppHandle, state: State<'_, Arc<AppState>>) -> 
     events::emit_event(&app, event_names::RECORDING_STOPPED, ());
     events::emit_event(&app, event_names::TRANSCRIPTION_STARTED, ());
 
-    // Get the audio buffer and sample rate
+    // Snapshot the audio under a brief lock, then clear so the next
+    // recording starts clean. The ring buffer may have evicted older
+    // samples if the user dictated past MAX_BUFFER_SAMPLES — the
+    // snapshot reflects the retained window only.
     let audio_data = {
         let mut buffer = lock_or_recover(&state.audio_buffer);
-        let data = buffer.clone();
+        let data = buffer.snapshot();
+        if buffer.has_overflowed() {
+            log::warn!(
+                "Audio ring buffer overflowed during this recording — \
+                 final transcription is from the most recent {} samples only",
+                data.len()
+            );
+        }
         buffer.clear();
         data
     };

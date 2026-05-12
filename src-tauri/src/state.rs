@@ -10,6 +10,7 @@ use parking_lot::{Mutex, MutexGuard};
 
 use tokio::sync::mpsc;
 
+use crate::audio::AudioRingBuffer;
 use crate::hotkey::FnKeyMonitorHandle;
 use crate::recording::RecordingCommand;
 use crate::settings::UserSettings;
@@ -56,8 +57,12 @@ pub struct AppState {
     pub recording: AtomicBool,
     /// Whether we are currently processing/transcribing
     pub processing: AtomicBool,
-    /// Accumulated PCM samples from the microphone (native sample rate)
-    pub audio_buffer: Mutex<Vec<f32>>,
+    /// Accumulated PCM samples from the microphone (native sample rate).
+    /// Bounded ring buffer — see [`AudioRingBuffer::MAX_BUFFER_SAMPLES`]. A
+    /// recording longer than the cap discards the oldest samples; the
+    /// `has_overflowed` flag stays set so the UI can surface a truncation
+    /// hint.
+    pub audio_buffer: Mutex<AudioRingBuffer>,
     /// The sample rate of the captured audio
     pub capture_sample_rate: Mutex<u32>,
     /// The active cpal input stream (dropped to stop recording)
@@ -130,7 +135,7 @@ impl AppState {
         Self {
             recording: AtomicBool::new(false),
             processing: AtomicBool::new(false),
-            audio_buffer: Mutex::new(Vec::new()),
+            audio_buffer: Mutex::new(AudioRingBuffer::default()),
             capture_sample_rate: Mutex::new(44_100),
             active_stream: Mutex::new(None),
             backend: Mutex::new(None),
