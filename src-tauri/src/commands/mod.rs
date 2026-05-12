@@ -3,7 +3,9 @@
 // `pub use` re-exports them so `commands::name` keeps working from
 // lib.rs's `invoke_handler!` macro and from cross-module callers like
 // tray.rs's `commands::run_repair_active_model`.
+pub mod features;
 pub mod vocabulary;
+pub use features::*;
 pub use vocabulary::*;
 
 use std::sync::Arc;
