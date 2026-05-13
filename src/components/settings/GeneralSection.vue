@@ -6,11 +6,7 @@ import SettingsRow from '@/components/base/SettingsRow.vue';
 import BaseToggle from '@/components/base/BaseToggle.vue';
 import BaseButton from '@/components/base/BaseButton.vue';
 import BaseInput from '@/components/base/BaseInput.vue';
-import {
-  HISTORY_DEFAULT_ENTRIES,
-  HISTORY_MAX_ENTRIES,
-  HISTORY_MIN_ENTRIES,
-} from '@/lib/commands';
+import { HISTORY_DEFAULT_ENTRIES, HISTORY_MAX_ENTRIES, HISTORY_MIN_ENTRIES } from '@/lib/commands';
 
 const {
   settings,

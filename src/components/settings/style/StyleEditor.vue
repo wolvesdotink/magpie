@@ -98,7 +98,7 @@ const CORRECTION_OPTIONS: { value: CorrectionOverride['kind']; label: string; he
 
 // ── Live preview ──
 const previewInput = ref(
-  "Um, this is a sample sentence. It demonstrates the style preview, e.g. casing and punctuation.",
+  'Um, this is a sample sentence. It demonstrates the style preview, e.g. casing and punctuation.',
 );
 const previewOutput = ref('');
 const previewError = ref<string | null>(null);
@@ -133,10 +133,7 @@ const tooLong = computed(() => customPromptCount.value > MAX_CUSTOM_PROMPT);
 const saveDisabled = computed(() => {
   if (draft.value.name.trim().length === 0) return true;
   if (tooLong.value) return true;
-  if (
-    draft.value.correction.kind === 'custom' &&
-    draft.value.correction.prompt.trim().length === 0
-  )
+  if (draft.value.correction.kind === 'custom' && draft.value.correction.prompt.trim().length === 0)
     return true;
   return false;
 });
@@ -152,11 +149,7 @@ function handleSave() {
     <div class="flex flex-col gap-3">
       <div class="flex flex-col gap-1">
         <span class="text-[10px] font-semibold text-ink-faint tracking-[0.02em]">Name</span>
-        <BaseInput
-          v-model="draft.name"
-          size="md"
-          placeholder="Style name"
-        />
+        <BaseInput v-model="draft.name" size="md" placeholder="Style name" />
       </div>
 
       <div class="flex flex-col gap-1">
@@ -211,8 +204,8 @@ function handleSave() {
               />
               <div class="flex items-center justify-between text-[9px]">
                 <span class="text-ink-faint">
-                  The prompt is applied verbatim before the user transcription.
-                  Hallucination guards still apply.
+                  The prompt is applied verbatim before the user transcription. Hallucination guards
+                  still apply.
                 </span>
                 <span :class="tooLong ? 'text-flame font-semibold' : 'text-ink-faint'">
                   {{ customPromptCount }} / {{ MAX_CUSTOM_PROMPT }}

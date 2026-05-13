@@ -9,14 +9,8 @@ import { useProfiles } from '@/composables/useProfiles';
 import { useConfirmAction } from '@/composables/useConfirmAction';
 import type { Style } from '@/lib/commands';
 
-const {
-  styles,
-  addStyle,
-  updateStyle,
-  deleteStyle,
-  duplicateStyle,
-  resetStyleToDefault,
-} = useStyles();
+const { styles, addStyle, updateStyle, deleteStyle, duplicateStyle, resetStyleToDefault } =
+  useStyles();
 const { profiles, resetBuiltInPresets } = useProfiles();
 const confirmDelete = useConfirmAction();
 const confirmReset = useConfirmAction();
@@ -148,12 +142,7 @@ async function handleResetAll() {
 
     <div class="flex flex-col gap-1.5">
       <div v-for="style in sortedStyles" :key="style.id">
-        <BaseCard
-          v-if="editingId !== style.id"
-          tone="neutral"
-          :interactive="false"
-          class="group"
-        >
+        <BaseCard v-if="editingId !== style.id" tone="neutral" :interactive="false" class="group">
           <div class="flex items-center gap-2">
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-1.5">

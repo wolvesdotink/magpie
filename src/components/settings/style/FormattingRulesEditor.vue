@@ -68,9 +68,7 @@ function setPunctuationKind(kind: PunctuationMode['kind']) {
       next = {
         kind: 'custom',
         chars:
-          props.modelValue.punctuation.kind === 'custom'
-            ? props.modelValue.punctuation.chars
-            : [],
+          props.modelValue.punctuation.kind === 'custom' ? props.modelValue.punctuation.chars : [],
       };
       break;
   }

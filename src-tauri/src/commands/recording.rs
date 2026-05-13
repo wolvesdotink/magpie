@@ -76,11 +76,7 @@ pub async fn start_recording(
         let mut current_app = lock_or_recover(&state.current_recording_app);
         *current_app = frontmost_app::detect();
         if let Some(ref app) = *current_app {
-            log::info!(
-                "Recording target: {} ({})",
-                app.name,
-                app.bundle_id
-            );
+            log::info!("Recording target: {} ({})", app.name, app.bundle_id);
         } else {
             log::debug!("No frontmost app detected at recording start");
         }
@@ -376,9 +372,11 @@ pub async fn stop_recording(
                                 (&*backend_guard, &*model_guard)
                             {
                                 let result = match custom_prompt {
-                                    Some(p) => correction::engine::correct_transcription_with_prompt(
-                                        backend, model, &text, p,
-                                    ),
+                                    Some(p) => {
+                                        correction::engine::correct_transcription_with_prompt(
+                                            backend, model, &text, p,
+                                        )
+                                    }
                                     None => correction::engine::correct_transcription(
                                         backend, model, &text,
                                     ),
@@ -436,17 +434,10 @@ pub async fn stop_recording(
                             let mut hist = lock_or_recover(&state_arc.history);
                             hist.push(text.clone(), duration_ms, history_cap);
                             if let Err(e) = hist.save() {
-                                log::warn!(
-                                    "Failed to persist transcription history: {}",
-                                    e
-                                );
+                                log::warn!("Failed to persist transcription history: {}", e);
                             }
                         }
-                        events::emit_event(
-                            &app_clone,
-                            event_names::HISTORY_ENTRY_ADDED,
-                            (),
-                        );
+                        events::emit_event(&app_clone, event_names::HISTORY_ENTRY_ADDED, ());
 
                         // Paste into active app
                         if let Err(e) = output::paste::paste_text(&app_clone, &text) {

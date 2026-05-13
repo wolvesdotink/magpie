@@ -137,9 +137,7 @@ fn apply_punctuation(text: &str, mode: &PunctuationMode) -> String {
         PunctuationMode::Auto => text.to_string(),
         PunctuationMode::Strip => {
             // Common punctuation set; matches what users typically want stripped.
-            text.chars()
-                .filter(|c| !is_strippable_punct(*c))
-                .collect()
+            text.chars().filter(|c| !is_strippable_punct(*c)).collect()
         }
         PunctuationMode::SentenceOnly => text
             .chars()
@@ -201,7 +199,12 @@ mod tests {
         FormattingRules::default()
     }
 
-    fn pp(text: &str, fillers: &[String], remove_fillers: bool, vocab: &[(String, String)]) -> String {
+    fn pp(
+        text: &str,
+        fillers: &[String],
+        remove_fillers: bool,
+        vocab: &[(String, String)],
+    ) -> String {
         postprocess(text, fillers, remove_fillers, vocab, &default_rules(), &[])
     }
 
@@ -225,20 +228,29 @@ mod tests {
     #[test]
     fn defaults_match_legacy_vocab_replace() {
         let vocab = vec![("Marshal".to_string(), "Marcel".to_string())];
-        assert_eq!(pp("Hello Marshal, nice to meet you", &[], false, &vocab), "Hello Marcel, nice to meet you");
+        assert_eq!(
+            pp("Hello Marshal, nice to meet you", &[], false, &vocab),
+            "Hello Marcel, nice to meet you"
+        );
     }
 
     #[test]
     fn defaults_match_legacy_vocab_preserves_case() {
         let vocab = vec![("marshal".to_string(), "Marcel".to_string())];
-        assert_eq!(pp("hello MARSHAL and marshal", &[], false, &vocab), "Hello MARCEL and Marcel");
+        assert_eq!(
+            pp("hello MARSHAL and marshal", &[], false, &vocab),
+            "Hello MARCEL and Marcel"
+        );
     }
 
     #[test]
     fn defaults_match_legacy_vocab_with_fillers() {
         let fillers = vec!["um".to_string()];
         let vocab = vec![("Marshal".to_string(), "Marcel".to_string())];
-        assert_eq!(pp("um my name is Marshal", &fillers, true, &vocab), "My name is Marcel");
+        assert_eq!(
+            pp("um my name is Marshal", &fillers, true, &vocab),
+            "My name is Marcel"
+        );
     }
 
     #[test]

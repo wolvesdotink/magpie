@@ -11,20 +11,11 @@ use crate::styles::{TextTransform, TransformKind};
 /// validated. Produced by `compile_all` from a `&[TextTransform]`.
 #[derive(Debug)]
 pub enum CompiledTransform {
-    Replace {
-        regex: Regex,
-        replacement: String,
-    },
-    Prepend {
-        text: String,
-    },
-    Append {
-        text: String,
-    },
+    Replace { regex: Regex, replacement: String },
+    Prepend { text: String },
+    Append { text: String },
     TrimEdges,
-    SqueezeChars {
-        regex: Regex,
-    },
+    SqueezeChars { regex: Regex },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -51,7 +42,10 @@ pub fn compile_all(transforms: &[TextTransform]) -> Result<Vec<CompiledTransform
         if !t.enabled {
             continue;
         }
-        let label = t.label.clone().unwrap_or_else(|| format!("rule {}", idx + 1));
+        let label = t
+            .label
+            .clone()
+            .unwrap_or_else(|| format!("rule {}", idx + 1));
         match compile_one(&t.kind, idx, &label) {
             Ok(compiled) => out.push(compiled),
             Err(e) => return Err(e),
@@ -139,9 +133,9 @@ pub fn apply(text: &str, transforms: &[CompiledTransform]) -> String {
     let mut current = text.to_string();
     for t in transforms {
         current = match t {
-            CompiledTransform::Replace { regex, replacement } => {
-                regex.replace_all(&current, replacement.as_str()).into_owned()
-            }
+            CompiledTransform::Replace { regex, replacement } => regex
+                .replace_all(&current, replacement.as_str())
+                .into_owned(),
             CompiledTransform::Prepend { text } => format!("{}{}", text, current),
             CompiledTransform::Append { text } => format!("{}{}", current, text),
             CompiledTransform::TrimEdges => current.trim().to_string(),
@@ -156,9 +150,13 @@ pub fn apply(text: &str, transforms: &[CompiledTransform]) -> String {
 /// Validate a single transform — used by the UI to surface regex errors as
 /// the user types.
 pub fn validate(transform: &TextTransform) -> Result<(), String> {
-    compile_one(&transform.kind, 0, transform.label.as_deref().unwrap_or("rule"))
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    compile_one(
+        &transform.kind,
+        0,
+        transform.label.as_deref().unwrap_or("rule"),
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -235,7 +233,10 @@ mod tests {
             },
         )];
         let compiled = compile_all(&transforms).unwrap();
-        assert_eq!(apply("the artist made art", &compiled), "the artist made ART");
+        assert_eq!(
+            apply("the artist made art", &compiled),
+            "the artist made ART"
+        );
     }
 
     #[test]
@@ -310,12 +311,7 @@ mod tests {
 
     #[test]
     fn squeeze_chars_works() {
-        let transforms = vec![t(
-            true,
-            TransformKind::SqueezeChars {
-                chars: ".,".into(),
-            },
-        )];
+        let transforms = vec![t(true, TransformKind::SqueezeChars { chars: ".,".into() })];
         let compiled = compile_all(&transforms).unwrap();
         assert_eq!(apply("a,,,b...c", &compiled), "a b c");
     }

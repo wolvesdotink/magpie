@@ -19,6 +19,7 @@ pub mod models;
 pub mod permissions;
 pub mod profiles;
 pub mod recording;
+pub mod running_apps;
 pub mod settings;
 pub mod styles;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -34,6 +35,7 @@ pub use models::*;
 pub use permissions::*;
 pub use profiles::*;
 pub use recording::*;
+pub use running_apps::*;
 pub use settings::*;
 pub use styles::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

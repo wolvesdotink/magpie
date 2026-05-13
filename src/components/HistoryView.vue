@@ -48,7 +48,6 @@ async function copyEntry(entry: HistoryEntry) {
 
 async function clearAll() {
   // Native confirm() matches the rest of the app — no modal infra in tree.
-  // eslint-disable-next-line no-alert
   if (!confirm('Clear all transcription history? This cannot be undone.')) return;
   try {
     await clearTranscriptionHistory();

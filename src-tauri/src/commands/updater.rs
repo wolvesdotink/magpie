@@ -193,15 +193,15 @@ mod tests {
 
     #[test]
     fn only_a_returns_a() {
-        assert_eq!(pick_newer(pair("0.1.20-beta.2", "beta"), None), Some("beta"));
+        assert_eq!(
+            pick_newer(pair("0.1.20-beta.2", "beta"), None),
+            Some("beta")
+        );
     }
 
     #[test]
     fn only_b_returns_b() {
-        assert_eq!(
-            pick_newer(None, pair("0.1.20", "stable")),
-            Some("stable")
-        );
+        assert_eq!(pick_newer(None, pair("0.1.20", "stable")), Some("stable"));
     }
 
     #[test]

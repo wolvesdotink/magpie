@@ -85,9 +85,7 @@ pub fn builtin_styles() -> Vec<Style> {
         Style {
             id: BUILTIN_CODE_IDENTIFIER_ID.into(),
             name: "Code Identifier".into(),
-            description: Some(
-                "For editors — preserves whisper casing, strips punctuation".into(),
-            ),
+            description: Some("For editors — preserves whisper casing, strips punctuation".into()),
             builtin: true,
             formatting: FormattingRules {
                 casing: CasingMode::Preserve,
@@ -105,9 +103,7 @@ pub fn builtin_styles() -> Vec<Style> {
         Style {
             id: BUILTIN_CODE_SNAKE_ID.into(),
             name: "Code Snake Case".into(),
-            description: Some(
-                "For dictating identifiers like `create_user_profile`".into(),
-            ),
+            description: Some("For dictating identifiers like `create_user_profile`".into()),
             builtin: true,
             formatting: FormattingRules {
                 casing: CasingMode::SnakeCase,
@@ -162,7 +158,11 @@ mod tests {
             assert!(presets.iter().any(|s| &s.id == id), "missing preset: {id}");
         }
         for preset in presets {
-            assert!(preset.builtin, "preset {} must have builtin=true", preset.id);
+            assert!(
+                preset.builtin,
+                "preset {} must have builtin=true",
+                preset.id
+            );
         }
     }
 }

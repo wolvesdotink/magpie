@@ -9,8 +9,10 @@ import {
   setProfileEnabled as setProfileEnabledCmd,
   resetBuiltInPresets as resetBuiltInPresetsCmd,
   getFrontmostApp,
+  getRunningApps,
   type AppProfile,
   type FrontmostApp,
+  type RunningApp,
 } from '@/lib/commands';
 
 const profiles = ref<AppProfile[]>([]);
@@ -79,6 +81,10 @@ async function detectFrontmostApp(): Promise<FrontmostApp | null> {
   return getFrontmostApp();
 }
 
+async function listRunningApps(): Promise<RunningApp[]> {
+  return getRunningApps();
+}
+
 export function useProfiles() {
   void ensureLoaded();
 
@@ -92,6 +98,7 @@ export function useProfiles() {
     setProfileEnabled,
     resetBuiltInPresets,
     detectFrontmostApp,
+    listRunningApps,
     reload: load,
   };
 }

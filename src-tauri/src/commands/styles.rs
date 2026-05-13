@@ -7,9 +7,7 @@ use tauri::{AppHandle, State};
 use crate::command_error::CommandError;
 use crate::events::{self, event_names};
 use crate::state::{lock_or_recover, AppState};
-use crate::styles::{
-    Style, StylesError, TextTransform, ValidationResult,
-};
+use crate::styles::{Style, StylesError, TextTransform, ValidationResult};
 use crate::transcription::{custom_rules, postprocess};
 
 #[tauri::command]

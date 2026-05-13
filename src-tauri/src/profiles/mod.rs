@@ -369,7 +369,11 @@ mod tests {
     #[test]
     fn seeded_contains_known_apps() {
         let store = ProfilesStore::seeded();
-        let bundles: Vec<&str> = store.profiles.iter().map(|p| p.bundle_id.as_str()).collect();
+        let bundles: Vec<&str> = store
+            .profiles
+            .iter()
+            .map(|p| p.bundle_id.as_str())
+            .collect();
         assert!(bundles.contains(&"com.tinyspeck.slackmacgap"));
         assert!(bundles.contains(&"com.apple.mail"));
         assert!(bundles.contains(&"com.apple.Terminal"));

@@ -169,10 +169,7 @@ function handleEditStyle(styleId: string) {
               <div class="flex items-center gap-1 mt-0.5">
                 <span class="text-[10px] text-ink-faint">Style:</span>
                 <span class="text-[10px] text-ink-muted">{{ styleName(profile.styleId) }}</span>
-                <span
-                  v-if="profile.vocabulary.length > 0"
-                  class="text-[10px] text-ink-faint ml-2"
-                >
+                <span v-if="profile.vocabulary.length > 0" class="text-[10px] text-ink-faint ml-2">
                   {{ profile.vocabulary.length }} words
                 </span>
               </div>

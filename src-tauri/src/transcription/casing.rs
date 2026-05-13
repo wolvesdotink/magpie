@@ -104,7 +104,10 @@ mod tests {
 
     #[test]
     fn sentence_default() {
-        assert_eq!(apply("hello world", CasingMode::Sentence, false), "Hello world");
+        assert_eq!(
+            apply("hello world", CasingMode::Sentence, false),
+            "Hello world"
+        );
     }
 
     #[test]
@@ -129,12 +132,18 @@ mod tests {
 
     #[test]
     fn lowercase_works() {
-        assert_eq!(apply("Hello World", CasingMode::Lowercase, false), "hello world");
+        assert_eq!(
+            apply("Hello World", CasingMode::Lowercase, false),
+            "hello world"
+        );
     }
 
     #[test]
     fn uppercase_works() {
-        assert_eq!(apply("Hello World", CasingMode::Uppercase, false), "HELLO WORLD");
+        assert_eq!(
+            apply("Hello World", CasingMode::Uppercase, false),
+            "HELLO WORLD"
+        );
     }
 
     #[test]

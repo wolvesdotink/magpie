@@ -2847,6 +2847,7 @@ version = "0.1.21"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64 0.22.1",
  "block",
  "chrono",
  "cocoa",

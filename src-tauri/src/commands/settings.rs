@@ -79,16 +79,9 @@ pub fn update_settings(
         if hist.len() > new_history_cap {
             hist.truncate_to(new_history_cap);
             if let Err(e) = hist.save() {
-                log::warn!(
-                    "Failed to save trimmed history after cap change: {}",
-                    e
-                );
+                log::warn!("Failed to save trimmed history after cap change: {}", e);
             }
-            crate::events::emit_event(
-                &app,
-                crate::events::event_names::HISTORY_ENTRY_ADDED,
-                (),
-            );
+            crate::events::emit_event(&app, crate::events::event_names::HISTORY_ENTRY_ADDED, ());
         }
     }
 

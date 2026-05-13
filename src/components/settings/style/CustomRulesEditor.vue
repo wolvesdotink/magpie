@@ -126,18 +126,11 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
 
 <template>
   <div class="flex flex-col gap-2">
-    <div
-      v-if="modelValue.length === 0"
-      class="text-[10px] text-ink-faint italic"
-    >
+    <div v-if="modelValue.length === 0" class="text-[10px] text-ink-faint italic">
       No custom rules. Add one below to transform the text after vocabulary and before casing.
     </div>
 
-    <div
-      v-for="(rule, idx) in modelValue"
-      :key="rule.id"
-      class="flex flex-col gap-1.5"
-    >
+    <div v-for="(rule, idx) in modelValue" :key="rule.id" class="flex flex-col gap-1.5">
       <BaseCard :tone="hasErrors(rule.id) ? 'flame' : 'neutral'">
         <div class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
@@ -217,7 +210,12 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
             <select
               :value="rule.kind.kind"
               class="rounded-md bg-raised border border-edge text-ink text-[11px] px-2 py-1 focus:outline-none focus:border-gold/40"
-              @change="setKindKind(idx, ($event.target as HTMLSelectElement).value as TransformKind['kind'])"
+              @change="
+                setKindKind(
+                  idx,
+                  ($event.target as HTMLSelectElement).value as TransformKind['kind'],
+                )
+              "
             >
               <option v-for="k in KIND_LABELS" :key="k.value" :value="k.value">
                 {{ k.label }}
@@ -233,7 +231,10 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
                 placeholder="Find"
                 class="flex-1"
                 @update:model-value="
-                  patchKind(idx, { ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>), pattern: $event })
+                  patchKind(idx, {
+                    ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>),
+                    pattern: $event,
+                  })
                 "
               />
               <svg
@@ -256,7 +257,10 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
                 placeholder="Replace with"
                 class="flex-1"
                 @update:model-value="
-                  patchKind(idx, { ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>), replacement: $event })
+                  patchKind(idx, {
+                    ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>),
+                    replacement: $event,
+                  })
                 "
               />
             </div>
@@ -267,7 +271,10 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
                   :checked="rule.kind.isRegex"
                   class="rounded border-edge"
                   @change="
-                    patchKind(idx, { ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>), isRegex: ($event.target as HTMLInputElement).checked })
+                    patchKind(idx, {
+                      ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>),
+                      isRegex: ($event.target as HTMLInputElement).checked,
+                    })
                   "
                 />
                 Regex
@@ -278,7 +285,10 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
                   :checked="rule.kind.caseSensitive"
                   class="rounded border-edge"
                   @change="
-                    patchKind(idx, { ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>), caseSensitive: ($event.target as HTMLInputElement).checked })
+                    patchKind(idx, {
+                      ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>),
+                      caseSensitive: ($event.target as HTMLInputElement).checked,
+                    })
                   "
                 />
                 Match case
@@ -293,7 +303,10 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
                   :disabled="rule.kind.isRegex"
                   class="rounded border-edge"
                   @change="
-                    patchKind(idx, { ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>), wholeWord: ($event.target as HTMLInputElement).checked })
+                    patchKind(idx, {
+                      ...(rule.kind as Extract<TransformKind, { kind: 'replace' }>),
+                      wholeWord: ($event.target as HTMLInputElement).checked,
+                    })
                   "
                 />
                 Whole word
@@ -306,9 +319,7 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
               size="sm"
               :model-value="rule.kind.text"
               placeholder="Text to prepend"
-              @update:model-value="
-                patchKind(idx, { kind: 'prepend', text: $event })
-              "
+              @update:model-value="patchKind(idx, { kind: 'prepend', text: $event })"
             />
           </template>
 
@@ -331,7 +342,9 @@ const hasErrors = (id: string) => Boolean(errors.value[id]);
           </template>
 
           <template v-if="rule.kind.kind === 'trimEdges'">
-            <span class="text-[10px] text-ink-faint italic">No options — trims leading and trailing whitespace.</span>
+            <span class="text-[10px] text-ink-faint italic"
+              >No options — trims leading and trailing whitespace.</span
+            >
           </template>
 
           <div v-if="errors[rule.id]" class="text-[10px] text-flame">

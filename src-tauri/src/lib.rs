@@ -24,6 +24,7 @@ mod permissions;
 mod profiles;
 mod recording;
 mod resolver;
+mod running_apps;
 mod settings;
 mod setup;
 mod state;
@@ -183,7 +184,7 @@ pub fn run() {
             commands::repair_active_model,
             commands::get_launch_at_login_status,
             commands::open_login_items_settings,
-            // Styles + Profiles + Frontmost App (per-app profiles feature)
+            // Styles + Profiles + Frontmost App + Running Apps (per-app profiles feature)
             commands::get_styles,
             commands::add_style,
             commands::update_style,
@@ -200,6 +201,7 @@ pub fn run() {
             commands::set_profile_enabled,
             commands::reset_built_in_presets,
             commands::get_frontmost_app,
+            commands::get_running_apps,
             // Transcript history (local searchable log + re-paste)
             commands::get_transcription_history,
             commands::clear_transcription_history,

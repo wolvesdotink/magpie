@@ -41,8 +41,8 @@ use crate::vocabulary::Vocabulary;
 /// 5. `active_stream`
 /// 6. `streaming_handle`
 /// 7. `last_transcription`
-/// 7.5. `history` (recording.rs pushes after `last_transcription`;
-///     `update_settings` may trim it. Never co-held with anything below.)
+///    7.5. `history` (recording.rs pushes after `last_transcription`;
+///    `update_settings` may trim it. Never co-held with anything below.)
 /// 8. `styles`
 /// 9. `profiles`
 /// 10. `vocabulary`

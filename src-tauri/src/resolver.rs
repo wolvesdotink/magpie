@@ -76,12 +76,10 @@ pub fn resolve(
     let _ = filler_global;
 
     let app_snapshot = lock_or_recover(current_app).clone();
-    let profile = app_snapshot
-        .as_ref()
-        .and_then(|app| {
-            let p = lock_or_recover(profiles);
-            p.find_by_bundle(&app.bundle_id).cloned()
-        });
+    let profile = app_snapshot.as_ref().and_then(|app| {
+        let p = lock_or_recover(profiles);
+        p.find_by_bundle(&app.bundle_id).cloned()
+    });
 
     // Determine style: profile's style → fallback to builtin-default.
     let style: Style = {
@@ -104,7 +102,10 @@ pub fn resolve(
     // Merge vocabulary: global ∪ profile (profile wins on `wrong` collision).
     let merged_entries = {
         let global_entries = lock_or_recover(vocabulary).entries.clone();
-        union_vocab(global_entries, profile.as_ref().map(|p| &p.vocabulary[..]).unwrap_or(&[]))
+        union_vocab(
+            global_entries,
+            profile.as_ref().map(|p| &p.vocabulary[..]).unwrap_or(&[]),
+        )
     };
 
     let initial_prompt = build_initial_prompt(&merged_entries);
@@ -145,10 +146,7 @@ pub fn resolve(
 
 /// Union of global + profile vocabulary, dedup'd by lowercase `wrong`.
 /// Profile entries win on collision.
-fn union_vocab(
-    global: Vec<VocabularyEntry>,
-    profile: &[VocabularyEntry],
-) -> Vec<VocabularyEntry> {
+fn union_vocab(global: Vec<VocabularyEntry>, profile: &[VocabularyEntry]) -> Vec<VocabularyEntry> {
     use std::collections::HashMap;
     let mut by_key: HashMap<String, VocabularyEntry> = HashMap::new();
     for e in global {
@@ -218,7 +216,10 @@ mod tests {
         assert_eq!(r.vocab_replacements.len(), 1);
         assert_eq!(r.formatting.casing, CasingMode::Sentence);
         assert_eq!(r.matched_profile_id, None);
-        assert_eq!(r.matched_style_id.as_deref(), Some(style_presets::BUILTIN_DEFAULT_ID));
+        assert_eq!(
+            r.matched_style_id.as_deref(),
+            Some(style_presets::BUILTIN_DEFAULT_ID)
+        );
     }
 
     #[test]
@@ -236,7 +237,10 @@ mod tests {
         let r = resolve(&current_app, &profiles, &styles, &vocabulary, &settings).unwrap();
         assert_eq!(r.formatting.casing, CasingMode::Lowercase);
         assert!(matches!(r.formatting.punctuation, PunctuationMode::Strip));
-        assert_eq!(r.matched_style_id.as_deref(), Some(style_presets::BUILTIN_PLAIN_LOWER_ID));
+        assert_eq!(
+            r.matched_style_id.as_deref(),
+            Some(style_presets::BUILTIN_PLAIN_LOWER_ID)
+        );
     }
 
     #[test]
@@ -329,6 +333,9 @@ mod tests {
         let settings = Mutex::new(UserSettings::default());
 
         let r = resolve(&current_app, &profiles, &styles, &vocabulary, &settings).unwrap();
-        assert_eq!(r.matched_style_id.as_deref(), Some(style_presets::BUILTIN_DEFAULT_ID));
+        assert_eq!(
+            r.matched_style_id.as_deref(),
+            Some(style_presets::BUILTIN_DEFAULT_ID)
+        );
     }
 }

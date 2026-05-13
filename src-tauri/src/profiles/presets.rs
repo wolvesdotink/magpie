@@ -62,13 +62,7 @@ pub fn builtin_profiles() -> Vec<AppProfile> {
     ]
 }
 
-fn builtin(
-    id: &str,
-    bundle_id: &str,
-    display_name: &str,
-    style_id: &str,
-    now: &str,
-) -> AppProfile {
+fn builtin(id: &str, bundle_id: &str, display_name: &str, style_id: &str, now: &str) -> AppProfile {
     AppProfile {
         id: id.into(),
         bundle_id: bundle_id.into(),

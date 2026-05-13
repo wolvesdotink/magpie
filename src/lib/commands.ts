@@ -177,6 +177,13 @@ export interface FrontmostApp {
   name: string;
 }
 
+export interface RunningApp {
+  bundleId: string;
+  name: string;
+  /** PNG data URL of the app icon; null if extraction failed. */
+  iconDataUrl: string | null;
+}
+
 export interface ValidationResult {
   ok: boolean;
   error: string | null;
@@ -307,11 +314,9 @@ export interface HistoryEntry {
   durationMs: number;
 }
 
-export const getTranscriptionHistory = () =>
-  invoke<HistoryEntry[]>('get_transcription_history');
+export const getTranscriptionHistory = () => invoke<HistoryEntry[]>('get_transcription_history');
 
-export const clearTranscriptionHistory = () =>
-  invoke<void>('clear_transcription_history');
+export const clearTranscriptionHistory = () => invoke<void>('clear_transcription_history');
 
 export const copyHistoryEntryToClipboard = (text: string) =>
   invoke<void>('copy_history_entry_to_clipboard', { text });
@@ -358,3 +363,7 @@ export const resetBuiltInPresets = () => invoke<void>('reset_built_in_presets');
 // ── Frontmost App ─────────────────────────────────────────────────
 
 export const getFrontmostApp = () => invoke<FrontmostApp | null>('get_frontmost_app');
+
+// ── Running Apps ──────────────────────────────────────────────────
+
+export const getRunningApps = () => invoke<RunningApp[]>('get_running_apps');

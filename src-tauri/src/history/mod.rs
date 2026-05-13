@@ -307,10 +307,7 @@ mod tests {
 
     #[test]
     fn rejects_future_version() {
-        let json = format!(
-            r#"{{"version": {}, "history": {{}}}}"#,
-            CURRENT_VERSION + 1
-        );
+        let json = format!(r#"{{"version": {}, "history": {{}}}}"#, CURRENT_VERSION + 1);
         let err = parse_versioned_history(&json).expect_err("future version rejected");
         assert!(matches!(err, HistoryError::VersionTooNew { .. }));
     }
@@ -323,10 +320,7 @@ mod tests {
 
     #[test]
     fn empty_envelope_payload_loads_as_empty() {
-        let json = format!(
-            r#"{{"version": {}, "history": {{}}}}"#,
-            CURRENT_VERSION
-        );
+        let json = format!(r#"{{"version": {}, "history": {{}}}}"#, CURRENT_VERSION);
         let h = parse_versioned_history(&json).expect("empty envelope loads");
         assert_eq!(h.entries.len(), 0);
         assert_eq!(h.next_id, 0);

@@ -150,12 +150,9 @@ fn run_detection(
         // Profile-scoped attribution.
         let mut profiles = lock_or_recover(&state.profiles);
         for (wrong, correct) in &corrections {
-            if let Err(e) = profiles.add_vocab_to_profile(
-                profile_id,
-                wrong,
-                correct,
-                VocabularySource::Auto,
-            ) {
+            if let Err(e) =
+                profiles.add_vocab_to_profile(profile_id, wrong, correct, VocabularySource::Auto)
+            {
                 log::warn!(
                     "Failed to attribute vocab to profile {}: {}; falling back to global",
                     profile_id,
@@ -185,7 +182,10 @@ fn run_detection(
             );
         }
         if let Err(e) = profiles.save() {
-            log::error!("Failed to save profiles after profile-scoped learning: {}", e);
+            log::error!(
+                "Failed to save profiles after profile-scoped learning: {}",
+                e
+            );
         }
     } else {
         // Global attribution.
