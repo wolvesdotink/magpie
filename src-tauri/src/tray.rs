@@ -52,15 +52,6 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                         let _ = window.emit("menu://check-for-updates", ());
                     }
                 }
-                "repair_active_model" => {
-                    // Re-fetch the CoreML encoder for the loaded model and
-                    // swap in a fresh WhisperContext. Runs on the async
-                    // runtime so the menu callback returns immediately.
-                    let app_h = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        crate::commands::run_repair_active_model(&app_h).await;
-                    });
-                }
                 _ if id.starts_with("model:") => {
                     let model_id = &id["model:".len()..];
                     handle_model_selection(app, model_id);
@@ -86,25 +77,16 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
     };
 
     let status = MenuItem::with_id(app, "status", status_text, false, None::<&str>)?;
+
+    // Passive acceleration-mode indicator. Reads the currently loaded model
+    // path and probes for the sibling `.mlmodelc` directory to decide between
+    // ANE (CoreML), Metal, or CPU. Omitted when no model is loaded — nothing
+    // meaningful to report. Disabled item; updates on the next menu rebuild.
+    let acceleration_item = build_acceleration_status(app, &state)?;
+
     let separator1 = PredefinedMenuItem::separator(app)?;
 
     let model_submenu = build_model_submenu(app, &state)?;
-
-    // "Repair Active Model" — only meaningful when a model is loaded and we're
-    // not actively recording or processing (the repair downloads the CoreML
-    // encoder and swaps the WhisperContext, which would conflict with an
-    // in-flight inference). Disabled but still visible otherwise so the user
-    // sees that the option exists.
-    let backend_loaded = lock_or_recover(&state.backend).is_some();
-    let idle = !state.is_recording() && !state.is_processing();
-    let repair_enabled = backend_loaded && idle;
-    let repair = MenuItem::with_id(
-        app,
-        "repair_active_model",
-        "Repair Active Model",
-        repair_enabled,
-        None::<&str>,
-    )?;
 
     let separator2 = PredefinedMenuItem::separator(app)?;
     let history = MenuItem::with_id(app, "history", "History\u{2026}", true, None::<&str>)?;
@@ -119,23 +101,61 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
     let separator3 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Magpie", true, Some("CmdOrCtrl+Q"))?;
 
-    let menu = Menu::with_items(
-        app,
-        &[
-            &status,
-            &separator1,
-            &model_submenu,
-            &repair,
-            &separator2,
-            &history,
-            &settings,
-            &check_updates,
-            &separator3,
-            &quit,
-        ],
-    )?;
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![&status];
+    if let Some(item) = acceleration_item.as_ref() {
+        items.push(item);
+    }
+    items.extend([
+        &separator1 as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &model_submenu,
+        &separator2,
+        &history,
+        &settings,
+        &check_updates,
+        &separator3,
+        &quit,
+    ]);
+
+    let menu = Menu::with_items(app, &items)?;
 
     Ok(menu)
+}
+
+/// Probe the active model's `.mlmodelc` sibling and the `MAGPIE_DISABLE_COREML`
+/// escape hatch to produce a disabled "Acceleration: …" menu item. Returns
+/// `Ok(None)` when no model is loaded — there's nothing meaningful to label
+/// in that state, so we omit the line entirely.
+fn build_acceleration_status(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+) -> Result<Option<MenuItem<tauri::Wry>>, Box<dyn std::error::Error>> {
+    let model_path = match lock_or_recover(&state.current_model_path).clone() {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    let disable_coreml = std::env::var("MAGPIE_DISABLE_COREML")
+        .map(|v| !v.is_empty() && v != "0")
+        .unwrap_or(false);
+
+    let label = if disable_coreml {
+        "Acceleration: CPU"
+    } else {
+        let encoder_present = model_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|stem| model_path.with_file_name(format!("{}-encoder.mlmodelc", stem)))
+            .map(|p| p.exists())
+            .unwrap_or(false);
+        if encoder_present {
+            "Acceleration: ANE (CoreML)"
+        } else {
+            "Acceleration: Metal"
+        }
+    };
+
+    let item = MenuItem::with_id(app, "acceleration", label, false, None::<&str>)?;
+    Ok(Some(item))
 }
 
 /// Build the "Model" submenu with a CheckMenuItem per available model.

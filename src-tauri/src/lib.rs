@@ -39,9 +39,7 @@ use crate::state::AppState;
 
 // Re-export the public load helpers used by `commands::*` via `crate::*` paths,
 // so the call sites stay short.
-pub use model_loading::{
-    flush_pending_reload, load_with_self_test, reload_backend_after_backfill_public,
-};
+pub use model_loading::{flush_pending_reload, load_with_self_test};
 
 /// Default global shortcut used when the user has not configured a custom one.
 pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Shift+Space";
@@ -181,7 +179,6 @@ pub fn run() {
             commands::add_vocabulary_entry,
             commands::remove_vocabulary_entry,
             commands::clear_vocabulary,
-            commands::repair_active_model,
             commands::get_launch_at_login_status,
             commands::open_login_items_settings,
             // Styles + Profiles + Frontmost App + Running Apps (per-app profiles feature)

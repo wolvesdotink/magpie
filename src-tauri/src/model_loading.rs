@@ -160,31 +160,60 @@ fn maybe_backfill_coreml_encoder(
     let path2 = model_path.clone();
     let state2 = state.clone();
     tauri::async_runtime::spawn(async move {
-        match models::downloader::download_encoder_only(
-            &app2,
-            &id2,
-            &encoder_url,
-            encoder_size,
-            &encoder_dir,
-            None,
-        )
-        .await
-        {
-            Ok(()) => {
-                log::info!(
-                    "CoreML encoder backfill complete for {}; reloading backend",
-                    id2
-                );
-                reload_backend_after_backfill(app2, state2, id2, path2).await;
+        // Retry budget: 3 attempts total, ~30s then ~120s between, covering
+        // most transient network blips without bothering the user. On final
+        // failure we just log and exit — the next launch re-enters this
+        // function (encoder_dir.exists() check at line 146 still false) so
+        // recovery is automatic across restarts.
+        const BACKOFF_SECS: &[u64] = &[30, 120];
+        let mut last_err: Option<crate::models::ModelError> = None;
+        for attempt in 0..=BACKOFF_SECS.len() {
+            match models::downloader::download_encoder_only(
+                &app2,
+                &id2,
+                &encoder_url,
+                encoder_size,
+                &encoder_dir,
+                None,
+            )
+            .await
+            {
+                Ok(()) => {
+                    log::info!(
+                        "CoreML encoder backfill complete for {} on attempt {}; reloading backend",
+                        id2,
+                        attempt + 1
+                    );
+                    reload_backend_after_backfill(app2, state2, id2, path2).await;
+                    return;
+                }
+                Err(e) => {
+                    if attempt < BACKOFF_SECS.len() {
+                        let wait = BACKOFF_SECS[attempt];
+                        log::warn!(
+                            "CoreML encoder backfill attempt {} for {} failed: {}. \
+                             Retrying in {}s.",
+                            attempt + 1,
+                            id2,
+                            e,
+                            wait
+                        );
+                        last_err = Some(e);
+                        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                    } else {
+                        last_err = Some(e);
+                    }
+                }
             }
-            Err(e) => {
-                log::warn!(
-                    "CoreML encoder backfill failed for {}: {}. \
-                     Use the tray's 'Repair Active Model' to retry.",
-                    id2,
-                    e
-                );
-            }
+        }
+        if let Some(e) = last_err {
+            log::warn!(
+                "CoreML encoder backfill for {} gave up after {} attempts: {}. \
+                 Continuing in Metal mode; next app launch will retry.",
+                id2,
+                BACKOFF_SECS.len() + 1,
+                e
+            );
         }
     });
 }
@@ -248,19 +277,6 @@ pub async fn flush_pending_reload(app: tauri::AppHandle, state: Arc<AppState>) {
     if let Some((model_id, path)) = pending {
         reload_backend_after_backfill(app, state, model_id, path).await;
     }
-}
-
-/// Public re-export of the backend reload helper for cross-module callers
-/// (specifically `commands::models::run_repair_active_model`). Same
-/// semantics as the internal function: defers if recording/processing,
-/// otherwise rebuilds the WhisperContext and swaps it in.
-pub async fn reload_backend_after_backfill_public(
-    app: tauri::AppHandle,
-    state: Arc<AppState>,
-    model_id: String,
-    path: std::path::PathBuf,
-) {
-    reload_backend_after_backfill(app, state, model_id, path).await;
 }
 
 /// Try to load the last used correction model on startup.

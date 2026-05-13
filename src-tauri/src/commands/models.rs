@@ -1,5 +1,4 @@
-//! Whisper model-management Tauri commands and the "repair active model"
-//! flow.
+//! Whisper model-management Tauri commands.
 //!
 //! Surface:
 //!   - get_available_models / get_downloaded_models — registry + filesystem
@@ -11,18 +10,18 @@
 //!     selection so it auto-loads on next launch.
 //!   - delete_model_file — drop the GGML file and its CoreML sibling dir;
 //!     clears the selection if the deleted model was active.
-//!   - repair_active_model / run_repair_active_model — re-fetches the
-//!     CoreML encoder for the active model when the startup backfill
-//!     failed; called from both Tauri and the tray menu.
+//!
+//! CoreML encoder recovery is fully automatic — see
+//! `maybe_backfill_coreml_encoder` in `model_loading.rs` for the retry loop.
 //!
 //! Correction-model commands live in commands/correction_models.rs.
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use crate::command_error::CommandError;
-use crate::events::{self, event_names, TranscriptionError};
+use crate::events::{self, event_names};
 use crate::models::{downloader, registry, storage, ModelError};
 use crate::state::{lock_or_recover, AppState};
 use crate::transcription::backend::CancellationToken;
@@ -261,158 +260,3 @@ fn load_model_internal(
     Ok(())
 }
 
-// ── Repair Active Model ────────────────────────────────────────────
-
-/// Re-fetch the CoreML encoder package for the currently loaded model and
-/// reload the `WhisperBackend` so the encoder is picked up. Used by the
-/// tray "Repair Active Model" item as the manual recovery path when the
-/// startup backfill fails (network blip, server 5xx, partial unzip).
-///
-/// Refuses to run while recording or processing is in flight — swapping
-/// the backend mid-inference would crash the active call.
-#[tauri::command]
-pub async fn repair_active_model(
-    app: AppHandle,
-    _state: State<'_, Arc<AppState>>,
-) -> Result<(), CommandError> {
-    run_repair_active_model(&app).await;
-    Ok(())
-}
-
-/// AppHandle-only entry point so non-Tauri callers (the tray menu handler)
-/// don't need to thread a `State<'_, Arc<AppState>>` reference.
-pub async fn run_repair_active_model(app: &AppHandle) {
-    let state = app.state::<Arc<AppState>>();
-
-    if state.is_recording() || state.is_processing() {
-        log::warn!("Repair Active Model: refusing while recording or processing");
-        events::emit_event(
-            app,
-            event_names::TRANSCRIPTION_ERROR,
-            TranscriptionError {
-                error: "Cannot repair model while recording or processing".to_string(),
-            },
-        );
-        return;
-    }
-
-    let model_id = match lock_or_recover(&state.settings).selected_model.clone() {
-        Some(id) => id,
-        None => {
-            log::warn!("Repair Active Model: no model selected");
-            events::emit_event(
-                app,
-                event_names::TRANSCRIPTION_ERROR,
-                TranscriptionError {
-                    error: "No active model to repair".to_string(),
-                },
-            );
-            return;
-        }
-    };
-    let info = match registry::find_model(&model_id) {
-        Some(i) => i,
-        None => {
-            log::warn!("Repair Active Model: unknown model id '{}'", model_id);
-            return;
-        }
-    };
-    let encoder_url = match info.encoder_url.clone() {
-        Some(u) => u,
-        None => {
-            log::info!(
-                "Repair Active Model: '{}' has no CoreML encoder (Distil-Whisper or similar) — nothing to repair",
-                model_id
-            );
-            return;
-        }
-    };
-    let encoder_size = info.encoder_size_bytes.unwrap_or(0);
-    let models_dir = match storage::models_dir() {
-        Ok(d) => d,
-        Err(e) => {
-            log::error!("Repair Active Model: cannot resolve models dir: {}", e);
-            return;
-        }
-    };
-    let encoder_dir = models_dir.join(downloader::encoder_dir_name_from_filename(&info.filename));
-    let model_path = match storage::model_path(&info.filename) {
-        Ok(p) if p.exists() => p,
-        _ => {
-            log::error!(
-                "Repair Active Model: model file missing for '{}' — re-download it instead",
-                model_id
-            );
-            return;
-        }
-    };
-
-    // Drop a stale `.mlmodelc.broken` from a prior (now-removed) quarantine
-    // path so the post-download reload can't pick the broken artifact back
-    // up. New builds don't create these, but old user installs may still
-    // have one on disk.
-    {
-        let stem = model_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        let broken_dir = model_path.with_file_name(format!("{}-encoder.mlmodelc.broken", stem));
-        if broken_dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&broken_dir) {
-                log::warn!(
-                    "Repair Active Model: could not remove {}: {}",
-                    broken_dir.display(),
-                    e
-                );
-            } else {
-                log::info!(
-                    "Repair Active Model: removed stale {}",
-                    broken_dir.display()
-                );
-            }
-        }
-    }
-
-    log::info!(
-        "Repairing model '{}' — re-downloading CoreML encoder",
-        model_id
-    );
-    match downloader::download_encoder_only(
-        app,
-        &model_id,
-        &encoder_url,
-        encoder_size,
-        &encoder_dir,
-        None,
-    )
-    .await
-    {
-        Ok(()) => {
-            log::info!(
-                "Repair Active Model: encoder restored for '{}'; reloading backend",
-                model_id
-            );
-            // Reuse the same idle-aware reload helper used by the startup
-            // backfill path. Because we early-returned on busy state above,
-            // the reload runs synchronously here. The reload itself runs the
-            // self-test and re-quarantines the encoder if it still fails.
-            crate::reload_backend_after_backfill_public(
-                app.clone(),
-                state.inner().clone(),
-                model_id,
-                model_path,
-            )
-            .await;
-        }
-        Err(e) => {
-            log::error!("Repair Active Model: encoder download failed: {}", e);
-            events::emit_event(
-                app,
-                event_names::TRANSCRIPTION_ERROR,
-                TranscriptionError {
-                    error: format!("Repair failed: {}", e),
-                },
-            );
-        }
-    }
-}
