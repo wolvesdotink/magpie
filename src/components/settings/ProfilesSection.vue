@@ -200,7 +200,7 @@ function handleEditStyle(styleId: string) {
         </BaseCard>
 
         <ProfileEditor
-          v-else
+          v-if="editingId === profile.id"
           :profile="profile"
           @save="handleSave"
           @cancel="editingId = null"

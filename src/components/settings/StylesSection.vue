@@ -206,7 +206,7 @@ async function handleResetAll() {
         </BaseCard>
 
         <StyleEditor
-          v-else
+          v-if="editingId === style.id"
           :style="style"
           @save="handleSave"
           @cancel="editingId = null"
