@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useUpdater } from '@/composables/useUpdater';
 import SettingsSection from '@/components/base/SettingsSection.vue';
@@ -12,6 +12,16 @@ const RELEASES_URL = 'https://github.com/wolvesdotink/magpie/releases/latest';
 
 const { state, checkNow, install, restart } = useUpdater();
 const { settings, updateUpdateChannel } = useSettings();
+
+const currentVersion = ref<string | null>(null);
+onMounted(async () => {
+  try {
+    const { getVersion } = await import('@tauri-apps/api/app');
+    currentVersion.value = await getVersion();
+  } catch {
+    // Outside Tauri runtime (e.g. plain Vite preview) — leave null.
+  }
+});
 
 async function toggleBetaChannel(value: boolean) {
   await updateUpdateChannel(value ? 'beta' : 'stable');
@@ -137,5 +147,9 @@ async function openReleases() {
         @update:model-value="toggleBetaChannel"
       />
     </SettingsRow>
+
+    <p v-if="currentVersion" class="text-[10px] text-ink-faint text-center tabular-nums mt-1">
+      Magpie v{{ currentVersion }}
+    </p>
   </SettingsSection>
 </template>
