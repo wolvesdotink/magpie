@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for Magpie",
-  "windows": ["main", "overlay", "settings"],
+  "windows": ["main", "overlay", "settings", "history"],
   "permissions": [
     "core:default",
     "core:window:default",
