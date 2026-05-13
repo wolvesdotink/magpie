@@ -1,0 +1,8 @@
+{
+  "version": "0.1.20-beta.2",
+  "notes": "See the release page for details.",
+  "pub_date": "2026-05-13T09:16:54Z",
+  "platforms": {
+    "darwin-aarch64": { "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkyb3h5NFFTVkdGT2xMYy9Gd01IWU5nYmE3Yk1hMWRkNHFxeFVRRVFzYmpUQmRla0MyaW80WTFteDVZNjRENjZzQlNubm9zcDhKcW80MUxJeFBtQ0d6VWdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NjYzNzYwCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKdXVzTzYydXdFZGhteWVYVndPYnVtMGdhckZrT1NIT3lmZU5VSHRtN1QwSGppOC9NQk9TbjNBRzMvMndQcEZWY29kaHpoUTk5RFlSNU9nS2VuellkQVE9PQo=", "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.20-beta.2/Magpie.app.tar.gz" }
+  }
+}
