@@ -1,7 +1,7 @@
 {
   "name": "magpie",
   "private": true,
-  "version": "0.1.20",
+  "version": "0.1.21-beta.1",
   "type": "module",
   "license": "MIT",
   "homepage": "https://wolves.ink",
