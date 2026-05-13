@@ -200,30 +200,25 @@ jobs:
           fi
 
       # Build a short changelog from commit subjects between the previous
-      # tag and this one. Stable releases diff against the previous *stable*
-      # tag (skipping intermediate -beta.N tags) so users on stable see the
-      # full delta from their last stable; beta releases diff against
-      # whatever immediate predecessor exists so each beta surfaces just
-      # its own changes. We skip `chore: bump version` commits since those
-      # mark the release itself rather than a change in it. The output is
-      # consumed by the Stage step (injected into latest.json) and by the
-      # Publish step (used as the GitHub Release body).
+      # *stable* tag and this one. Both stable and beta releases diff
+      # against the last stable so every release surfaces the full delta
+      # a user on the previous stable would see if they upgraded — beta
+      # testers get the cumulative picture of what's queued for the next
+      # stable, not just one beta's incremental change. We skip
+      # `chore: bump version` commits since those mark the release itself
+      # rather than a change in it. The output is consumed by the Stage
+      # step (injected into latest.json) and by the Publish step (used as
+      # the GitHub Release body).
       - name: Generate release notes
         id: notes
-        env:
-          PRERELEASE: ${{ steps.tagmeta.outputs.prerelease }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF##*/}"
 
-          if [[ "$PRERELEASE" == "true" ]]; then
-            PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
-          else
-            PREV=$(git tag --list 'v*' --sort=-v:refname \
-                    | grep -v -- '-beta\.' \
-                    | grep -v -Fx "$TAG" \
-                    | head -n1 || echo "")
-          fi
+          PREV=$(git tag --list 'v*' --sort=-v:refname \
+                  | grep -v -- '-beta\.' \
+                  | grep -v -Fx "$TAG" \
+                  | head -n1 || echo "")
 
           if [[ -z "$PREV" ]]; then
             BODY="Initial release."
