@@ -22,9 +22,10 @@
 
 use std::sync::Arc;
 
+use semver::Version;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
-use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::settings::UpdateChannel;
 use crate::state::{lock_or_recover, AppState};
@@ -50,31 +51,78 @@ struct ProgressPayload {
     content_length: Option<u64>,
 }
 
-#[tauri::command]
-pub async fn magpie_updater_check(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<Option<UpdaterCheckResult>, String> {
-    let channel = lock_or_recover(&state.settings).update_channel;
-    let endpoint_url = match channel {
-        UpdateChannel::Beta => BETA_ENDPOINT,
-        UpdateChannel::Stable => STABLE_ENDPOINT,
-    };
+async fn check_endpoint(app: &AppHandle, endpoint_url: &str) -> Result<Option<Update>, String> {
     let endpoint: tauri::Url = endpoint_url
         .parse()
         .map_err(|e| format!("parse endpoint: {e}"))?;
-
     let updater = app
         .updater_builder()
         .endpoints(vec![endpoint])
         .map_err(|e| format!("set endpoints: {e}"))?
         .build()
         .map_err(|e| format!("build updater: {e}"))?;
-
-    let maybe_update = updater
+    updater
         .check()
         .await
-        .map_err(|e| format!("check update: {e}"))?;
+        .map_err(|e| format!("check update: {e}"))
+}
+
+// Returns whichever side names a newer SemVer version. Generic over the
+// payload (`T`) so we can unit-test the version logic without constructing a
+// real `tauri_plugin_updater::Update`. On ties or unparseable versions, prefer
+// `a` — at call sites we pass beta as `a`, which keeps the beta build for
+// equal versions and falls back gracefully if a manifest carries a non-SemVer
+// string.
+fn pick_newer<T>(a: Option<(String, T)>, b: Option<(String, T)>) -> Option<T> {
+    match (a, b) {
+        (Some((av, ax)), Some((bv, bx))) => {
+            let take_b = matches!(
+                (Version::parse(&av), Version::parse(&bv)),
+                (Ok(a), Ok(b)) if b > a
+            );
+            if take_b {
+                Some(bx)
+            } else {
+                Some(ax)
+            }
+        }
+        (Some((_, ax)), None) => Some(ax),
+        (None, Some((_, bx))) => Some(bx),
+        (None, None) => None,
+    }
+}
+
+#[tauri::command]
+pub async fn magpie_updater_check(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Option<UpdaterCheckResult>, String> {
+    let channel = lock_or_recover(&state.settings).update_channel;
+
+    let maybe_update = match channel {
+        UpdateChannel::Stable => check_endpoint(&app, STABLE_ENDPOINT).await?,
+        UpdateChannel::Beta => {
+            // Fetch both manifests; on the Beta channel a newer Stable should
+            // also be offered (e.g. when a stable release jumps past the
+            // latest beta). Either endpoint may legitimately fail (network,
+            // 404 before first beta has been published, etc.) — only surface
+            // an error if both fail.
+            let (beta_res, stable_res) = tokio::join!(
+                check_endpoint(&app, BETA_ENDPOINT),
+                check_endpoint(&app, STABLE_ENDPOINT),
+            );
+            let (beta, stable) = match (beta_res, stable_res) {
+                (Err(b), Err(s)) => return Err(format!("beta: {b}; stable: {s}")),
+                (Ok(b), Err(_)) => (b, None),
+                (Err(_), Ok(s)) => (None, s),
+                (Ok(b), Ok(s)) => (b, s),
+            };
+            pick_newer(
+                beta.map(|u| (u.version.clone(), u)),
+                stable.map(|u| (u.version.clone(), u)),
+            )
+        }
+    };
 
     match maybe_update {
         Some(update) => {
@@ -128,4 +176,69 @@ pub async fn magpie_updater_install(
         .map_err(|e| format!("download and install: {e}"))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_newer;
+
+    fn pair(version: &str, label: &'static str) -> Option<(String, &'static str)> {
+        Some((version.to_string(), label))
+    }
+
+    #[test]
+    fn both_none_returns_none() {
+        assert_eq!(pick_newer::<&str>(None, None), None);
+    }
+
+    #[test]
+    fn only_a_returns_a() {
+        assert_eq!(pick_newer(pair("0.1.20-beta.2", "beta"), None), Some("beta"));
+    }
+
+    #[test]
+    fn only_b_returns_b() {
+        assert_eq!(
+            pick_newer(None, pair("0.1.20", "stable")),
+            Some("stable")
+        );
+    }
+
+    #[test]
+    fn stable_release_beats_older_beta_prerelease() {
+        // 0.1.20 > 0.1.20-beta.2 by SemVer (prereleases sort below release).
+        assert_eq!(
+            pick_newer(pair("0.1.20-beta.2", "beta"), pair("0.1.20", "stable")),
+            Some("stable")
+        );
+    }
+
+    #[test]
+    fn newer_beta_beats_older_stable() {
+        assert_eq!(
+            pick_newer(pair("0.1.22-beta.1", "beta"), pair("0.1.21", "stable")),
+            Some("beta")
+        );
+    }
+
+    #[test]
+    fn identical_versions_prefer_a() {
+        // Call site passes beta as `a`, so a tie keeps the beta build.
+        assert_eq!(
+            pick_newer(pair("0.1.20", "beta"), pair("0.1.20", "stable")),
+            Some("beta")
+        );
+    }
+
+    #[test]
+    fn unparseable_version_falls_through_to_a() {
+        assert_eq!(
+            pick_newer(pair("0.1.20", "beta"), pair("not-a-version", "stable")),
+            Some("beta")
+        );
+        assert_eq!(
+            pick_newer(pair("not-a-version", "beta"), pair("0.1.20", "stable")),
+            Some("beta")
+        );
+    }
 }

@@ -87,6 +87,7 @@ anyhow = "1.0"
 thiserror = "2"
 regex = "1"
 num_cpus = "1"
+semver = "1"
 
 # parking_lot replaces std::sync::Mutex / RwLock with implementations that
 # do not poison on panic, lock faster on contention, and offer RwLock with
