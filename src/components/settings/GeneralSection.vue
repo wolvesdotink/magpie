@@ -1,14 +1,54 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import SettingsSection from '@/components/base/SettingsSection.vue';
 import SettingsRow from '@/components/base/SettingsRow.vue';
 import BaseToggle from '@/components/base/BaseToggle.vue';
 import BaseButton from '@/components/base/BaseButton.vue';
+import BaseInput from '@/components/base/BaseInput.vue';
+import {
+  HISTORY_DEFAULT_ENTRIES,
+  HISTORY_MAX_ENTRIES,
+  HISTORY_MIN_ENTRIES,
+} from '@/lib/commands';
 
-const { settings, launchAtLoginStatus, openLoginItemsSettings, updateAutoStart } = useSettings();
+const {
+  settings,
+  launchAtLoginStatus,
+  openLoginItemsSettings,
+  updateAutoStart,
+  updateHistoryMaxEntries,
+} = useSettings();
 
 function toggleAutoStart(value: boolean) {
   updateAutoStart(value);
+}
+
+// Bind the number input as a string (BaseInput uses defineModel<string>()),
+// then parse + clamp + debounce before persisting.
+const historyMaxEntriesInput = ref<string>(String(HISTORY_DEFAULT_ENTRIES));
+const currentHistoryMax = computed(
+  () => settings.value?.historyMaxEntries ?? HISTORY_DEFAULT_ENTRIES,
+);
+
+watch(
+  currentHistoryMax,
+  (v) => {
+    historyMaxEntriesInput.value = String(v);
+  },
+  { immediate: true },
+);
+
+let historyMaxDebounce: ReturnType<typeof setTimeout> | null = null;
+
+function onHistoryMaxChange() {
+  if (historyMaxDebounce) clearTimeout(historyMaxDebounce);
+  historyMaxDebounce = setTimeout(async () => {
+    const parsed = Number.parseInt(historyMaxEntriesInput.value, 10);
+    if (!Number.isFinite(parsed)) return;
+    const clamped = Math.min(HISTORY_MAX_ENTRIES, Math.max(HISTORY_MIN_ENTRIES, parsed));
+    await updateHistoryMaxEntries(clamped);
+  }, 400);
 }
 </script>
 
@@ -44,5 +84,22 @@ function toggleAutoStart(value: boolean) {
     >
       Magpie needs approval in System Settings → Login Items. Click to open.
     </BaseButton>
+
+    <SettingsRow
+      label="Transcript history size"
+      :helper="`Older dictations are dropped when you exceed this number (${HISTORY_MIN_ENTRIES}–${HISTORY_MAX_ENTRIES}).`"
+    >
+      <BaseInput
+        v-model="historyMaxEntriesInput"
+        type="number"
+        size="sm"
+        class="w-20 text-right"
+        :min="HISTORY_MIN_ENTRIES"
+        :max="HISTORY_MAX_ENTRIES"
+        step="10"
+        @input="onHistoryMaxChange"
+        @change="onHistoryMaxChange"
+      />
+    </SettingsRow>
   </SettingsSection>
 </template>

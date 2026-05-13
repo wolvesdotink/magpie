@@ -151,6 +151,11 @@ const SEARCH_INDEX: { section: SectionId; label: string; keywords: string }[] = 
   },
   { section: 'general', label: 'Launch at login', keywords: 'autostart startup login boot launch' },
   {
+    section: 'general',
+    label: 'Transcript history size',
+    keywords: 'history transcripts log retention size cap repaste recent dictations',
+  },
+  {
     section: 'updates',
     label: 'Receive beta updates',
     keywords: 'beta channel prerelease updates opt-in early access',

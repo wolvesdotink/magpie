@@ -34,9 +34,20 @@ pub fn get_settings(state: State<'_, Arc<AppState>>) -> crate::settings::UserSet
 /// clobbering an in-flight download.
 #[tauri::command]
 pub fn update_settings(
+    app: AppHandle,
     state: State<'_, Arc<AppState>>,
     mut settings: crate::settings::UserSettings,
 ) {
+    // Clamp `history_max_entries` server-side so a hand-crafted payload (or
+    // a future UI bug) cannot push the on-disk ring outside its supported
+    // size envelope. The clamp range lives next to the constants in
+    // `crate::history`.
+    settings.history_max_entries = settings.history_max_entries.clamp(
+        crate::history::HISTORY_MIN_ENTRIES,
+        crate::history::HISTORY_MAX_ENTRIES,
+    );
+    let new_history_cap = settings.history_max_entries as usize;
+
     let mut current = lock_or_recover(&state.settings);
     if settings.selected_model.is_none() {
         settings.selected_model = current.selected_model.clone();
@@ -59,6 +70,27 @@ pub fn update_settings(
     // register/unregister call can take a noticeable moment and may
     // surface a system notification on the main thread.
     drop(current);
+
+    // If the user lowered the cap below the current history length,
+    // proactively trim and notify the History window so it refreshes.
+    // settings (rank 1) is released above; history (rank 7.5) goes next.
+    {
+        let mut hist = lock_or_recover(&state.history);
+        if hist.len() > new_history_cap {
+            hist.truncate_to(new_history_cap);
+            if let Err(e) = hist.save() {
+                log::warn!(
+                    "Failed to save trimmed history after cap change: {}",
+                    e
+                );
+            }
+            crate::events::emit_event(
+                &app,
+                crate::events::event_names::HISTORY_ENTRY_ADDED,
+                (),
+            );
+        }
+    }
 
     #[cfg(target_os = "macos")]
     if auto_start_changed {

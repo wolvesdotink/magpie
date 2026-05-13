@@ -12,6 +12,7 @@ mod correction;
 mod correction_detector;
 mod events;
 mod frontmost_app;
+mod history;
 mod hotkey;
 #[cfg(target_os = "macos")]
 mod launch_at_login;
@@ -199,6 +200,10 @@ pub fn run() {
             commands::set_profile_enabled,
             commands::reset_built_in_presets,
             commands::get_frontmost_app,
+            // Transcript history (local searchable log + re-paste)
+            commands::get_transcription_history,
+            commands::clear_transcription_history,
+            commands::copy_history_entry_to_clipboard,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::magpie_updater_check,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -277,6 +282,12 @@ fn window_event_handler(window: &tauri::Window, event: &tauri::WindowEvent) {
             _ => {}
         },
         "settings" => {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        }
+        "history" => {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();

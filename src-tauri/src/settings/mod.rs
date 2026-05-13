@@ -13,6 +13,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_history_max_entries() -> u32 {
+    crate::history::HISTORY_DEFAULT_ENTRIES
+}
+
 /// Activation mode for triggering dictation
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -92,6 +96,12 @@ pub struct UserSettings {
     /// endpoint is registered at init time and cannot be swapped live).
     #[serde(default)]
     pub update_channel: UpdateChannel,
+    /// Maximum number of dictation transcripts retained in the on-disk
+    /// history ring. Clamped to
+    /// [`crate::history::HISTORY_MIN_ENTRIES`,
+    ///  `crate::history::HISTORY_MAX_ENTRIES`] by `update_settings`.
+    #[serde(default = "default_history_max_entries")]
+    pub history_max_entries: u32,
 }
 
 impl Default for UserSettings {
@@ -117,6 +127,7 @@ impl Default for UserSettings {
             streaming_preview: false,
             custom_shortcut: None,
             update_channel: UpdateChannel::Stable,
+            history_max_entries: crate::history::HISTORY_DEFAULT_ENTRIES,
         }
     }
 }

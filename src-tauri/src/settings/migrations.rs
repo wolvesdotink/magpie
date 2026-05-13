@@ -24,7 +24,7 @@ use serde_json::Value;
 use super::error::{Result, SettingsError};
 
 /// The shape version this build writes to disk and expects on load.
-pub const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 3;
 
 /// A single forward migration step. Index `i` in [`migrations`] migrates
 /// **from v`i` to v`i+1`**, so a v0 file applies migrations 0, 1, …,
@@ -43,6 +43,10 @@ pub fn migrations() -> Vec<Migration> {
         // the default for older files automatically — this migration is
         // version-bookkeeping only.
         migrate_v1_to_v2,
+        // v2 → v3: introduce `historyMaxEntries` (default 50). Same
+        // pattern as v1→v2: `#[serde(default)]` fills in the missing
+        // value, so this step is bookkeeping only.
+        migrate_v2_to_v3,
     ]
 }
 
@@ -54,6 +58,12 @@ fn migrate_v0_to_v1(_value: &mut Value) -> Result<()> {
 fn migrate_v1_to_v2(_value: &mut Value) -> Result<()> {
     // `updateChannel` is added in v2 with `#[serde(default)]`, so a
     // missing field deserializes to `Stable`. No payload rewrite needed.
+    Ok(())
+}
+
+fn migrate_v2_to_v3(_value: &mut Value) -> Result<()> {
+    // `historyMaxEntries` is added in v3 with `#[serde(default)]`, so a
+    // missing field deserializes to the default. No payload rewrite needed.
     Ok(())
 }
 

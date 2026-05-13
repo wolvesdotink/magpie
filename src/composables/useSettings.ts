@@ -163,6 +163,12 @@ async function updateUpdateChannel(channel: 'stable' | 'beta') {
   await persist();
 }
 
+async function updateHistoryMaxEntries(value: number) {
+  if (!settings.value) return;
+  settings.value = { ...settings.value, historyMaxEntries: value };
+  await persist();
+}
+
 async function reload() {
   loading.value = true;
   loadPromise = load();
@@ -197,6 +203,7 @@ export function useSettings() {
     updateSelectedCorrectionModel,
     updateSelectedModel,
     updateUpdateChannel,
+    updateHistoryMaxEntries,
     reload,
   };
 }

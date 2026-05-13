@@ -71,7 +71,17 @@ export interface UserSettings {
    *  Read in Rust at every update check, so the toggle takes effect on
    *  the next check — no app relaunch required. */
   updateChannel: 'stable' | 'beta';
+  /** Maximum number of dictation transcripts retained in the on-disk
+   *  history ring. Clamped server-side to [10, 500]. Default 50. */
+  historyMaxEntries: number;
 }
+
+// Mirror the Rust constants in `crate::history`. Keep these in sync if you
+// ever change the Rust-side bounds — both ends import from here for the
+// settings UI's min/max attributes.
+export const HISTORY_MIN_ENTRIES = 10;
+export const HISTORY_MAX_ENTRIES = 500;
+export const HISTORY_DEFAULT_ENTRIES = 50;
 
 export interface VocabularyEntry {
   wrong: string;
@@ -285,6 +295,26 @@ export const removeVocabularyEntry = (wrong: string) =>
   invoke('remove_vocabulary_entry', { wrong });
 
 export const clearVocabulary = () => invoke('clear_vocabulary');
+
+// ── Transcript History ────────────────────────────────────────────
+
+export interface HistoryEntry {
+  id: number;
+  text: string;
+  /** Unix epoch milliseconds. */
+  createdAt: number;
+  /** Backend decode time in milliseconds. */
+  durationMs: number;
+}
+
+export const getTranscriptionHistory = () =>
+  invoke<HistoryEntry[]>('get_transcription_history');
+
+export const clearTranscriptionHistory = () =>
+  invoke<void>('clear_transcription_history');
+
+export const copyHistoryEntryToClipboard = (text: string) =>
+  invoke<void>('copy_history_entry_to_clipboard', { text });
 
 // ── Styles ─────────────────────────────────────────────────────────
 

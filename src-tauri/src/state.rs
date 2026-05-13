@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 
 use crate::audio::AudioRingBuffer;
 use crate::frontmost_app::FrontmostApp;
+use crate::history::History;
 use crate::hotkey::FnKeyMonitorHandle;
 use crate::profiles::ProfilesStore;
 use crate::recording::RecordingCommand;
@@ -40,6 +41,8 @@ use crate::vocabulary::Vocabulary;
 /// 5. `active_stream`
 /// 6. `streaming_handle`
 /// 7. `last_transcription`
+/// 7.5. `history` (recording.rs pushes after `last_transcription`;
+///     `update_settings` may trim it. Never co-held with anything below.)
 /// 8. `styles`
 /// 9. `profiles`
 /// 10. `vocabulary`
@@ -90,6 +93,10 @@ pub struct AppState {
     pub streaming_handle: Mutex<Option<StreamingHandle>>,
     /// The last transcription result
     pub last_transcription: Mutex<String>,
+    /// Bounded ring of recent dictation transcripts, persisted to disk in
+    /// `history.json`. Cap is read from `settings.history_max_entries` at
+    /// push time (see `commands/recording.rs`).
+    pub history: Mutex<History>,
     /// User settings
     pub settings: Mutex<UserSettings>,
     /// Llama backend (initialized once, shared across correction calls)
@@ -164,6 +171,7 @@ impl AppState {
             current_model_path: Mutex::new(None),
             streaming_handle: Mutex::new(None),
             last_transcription: Mutex::new(String::new()),
+            history: Mutex::new(History::load()),
             settings: Mutex::new(UserSettings::load()),
             llama_backend: Mutex::new(None),
             correction_model: Mutex::new(None),

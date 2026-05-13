@@ -153,3 +153,7 @@ export function onStylesChanged(callback: () => void): Promise<UnlistenFn> {
 export function onProfilesChanged(callback: () => void): Promise<UnlistenFn> {
   return listen('profiles-changed', () => callback());
 }
+
+export function onHistoryEntryAdded(callback: () => void): Promise<UnlistenFn> {
+  return listen('history-entry-added', () => callback());
+}

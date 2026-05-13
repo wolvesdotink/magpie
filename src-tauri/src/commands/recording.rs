@@ -424,6 +424,30 @@ pub async fn stop_recording(
                             *last = text.clone();
                         }
 
+                        // Append to on-disk history (best-effort; never blocks
+                        // the paste). Two scopes so neither guard is held
+                        // across the next lock or the paste call — keeps the
+                        // settings → history ordering on rank 1 → rank 7.5.
+                        let history_cap = {
+                            let s = lock_or_recover(&state_arc.settings);
+                            s.history_max_entries as usize
+                        };
+                        {
+                            let mut hist = lock_or_recover(&state_arc.history);
+                            hist.push(text.clone(), duration_ms, history_cap);
+                            if let Err(e) = hist.save() {
+                                log::warn!(
+                                    "Failed to persist transcription history: {}",
+                                    e
+                                );
+                            }
+                        }
+                        events::emit_event(
+                            &app_clone,
+                            event_names::HISTORY_ENTRY_ADDED,
+                            (),
+                        );
+
                         // Paste into active app
                         if let Err(e) = output::paste::paste_text(&app_clone, &text) {
                             log::error!("Failed to paste text: {}", e);

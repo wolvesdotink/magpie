@@ -51,6 +51,21 @@
         "alwaysOnTop": false,
         "skipTaskbar": false,
         "focus": true
+      },
+      {
+        "label": "history",
+        "url": "history.html",
+        "width": 480,
+        "height": 560,
+        "minWidth": 380,
+        "minHeight": 360,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "focus": true
       }
     ],
     "security": {

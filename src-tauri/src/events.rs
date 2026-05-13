@@ -20,6 +20,7 @@ pub mod event_names {
     pub const VOCABULARY_LEARNED: &str = "vocabulary-learned";
     pub const STYLES_CHANGED: &str = "styles-changed";
     pub const PROFILES_CHANGED: &str = "profiles-changed";
+    pub const HISTORY_ENTRY_ADDED: &str = "history-entry-added";
 }
 
 #[derive(Clone, Serialize)]
@@ -250,5 +251,8 @@ mod tests {
         assert_eq!(event_names::CORRECTION_COMPLETE, "correction-complete");
         assert_eq!(event_names::AUDIO_AMPLITUDE, "audio-amplitude");
         assert_eq!(event_names::VOCABULARY_LEARNED, "vocabulary-learned");
+        assert_eq!(event_names::STYLES_CHANGED, "styles-changed");
+        assert_eq!(event_names::PROFILES_CHANGED, "profiles-changed");
+        assert_eq!(event_names::HISTORY_ENTRY_ADDED, "history-entry-added");
     }
 }

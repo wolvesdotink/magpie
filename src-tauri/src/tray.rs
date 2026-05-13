@@ -37,6 +37,12 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                         let _ = window.set_focus();
                     }
                 }
+                "history" => {
+                    if let Some(window) = app.get_webview_window("history") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
                 "check_for_updates" => {
                     // Show settings window (where the updater UI lives) and
                     // emit the event the Vue composable listens for.
@@ -101,6 +107,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
     )?;
 
     let separator2 = PredefinedMenuItem::separator(app)?;
+    let history = MenuItem::with_id(app, "history", "History\u{2026}", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
     let check_updates = MenuItem::with_id(
         app,
@@ -120,6 +127,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
             &model_submenu,
             &repair,
             &separator2,
+            &history,
             &settings,
             &check_updates,
             &separator3,
