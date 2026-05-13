@@ -40,6 +40,9 @@ watch(processing, (isProc) => {
 
 <template>
   <div class="overlay-container">
+    <Transition name="caption">
+      <PartialCaption v-if="recording && partialText" :text="partialText" />
+    </Transition>
     <div class="pill-stack">
       <Transition :name="pillTransitionName" @after-enter="onAfterEnter">
         <div v-if="recording" :key="'recording-' + recordingGeneration" class="pill-outer">
@@ -50,9 +53,6 @@ watch(processing, (isProc) => {
         </div>
       </Transition>
     </div>
-    <Transition name="caption">
-      <PartialCaption v-if="recording && partialText" :text="partialText" />
-    </Transition>
     <Transition name="caption">
       <ErrorPill v-if="showError" :message="error ?? ''" />
     </Transition>
@@ -152,25 +152,35 @@ watch(processing, (isProc) => {
 /* ---- Caption transition (shared by PartialCaption + ErrorPill) ---- */
 .caption-enter-from {
   opacity: 0;
-  transform: translateY(-2px);
+  transform: scale(0.9);
   filter: blur(2px);
 }
 .caption-enter-active {
   transition:
-    opacity 0.25s ease-out,
-    transform 0.25s ease-out,
-    filter 0.25s ease-out;
+    opacity 0.12s ease-out,
+    transform 0.12s ease-out,
+    filter 0.12s ease-out;
 }
 .caption-enter-to {
   opacity: 1;
-  transform: translateY(0);
+  transform: scale(1);
   filter: blur(0);
 }
 
+.caption-leave-from {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+}
 .caption-leave-active {
-  transition: opacity 0.18s ease-in;
+  transition:
+    opacity 0.12s ease-in,
+    transform 0.12s ease-in,
+    filter 0.12s ease-in;
 }
 .caption-leave-to {
   opacity: 0;
+  transform: scale(0.9);
+  filter: blur(2px);
 }
 </style>

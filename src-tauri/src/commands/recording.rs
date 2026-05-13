@@ -82,7 +82,7 @@ pub async fn start_recording(
     events::emit_event(&app, event_names::RECORDING_STARTED, ());
 
     // Spawn the streaming-preview worker. It will poll the audio buffer
-    // every ~1.5s and emit PARTIAL_TRANSCRIPTION events the overlay can
+    // every ~300 ms and emit PARTIAL_TRANSCRIPTION events the overlay can
     // render as a live caption. Skip if no backend is loaded — there's
     // nothing to decode against — or if the user has disabled the live
     // preview in Settings (default off; final-on-stop is unaffected).
@@ -92,9 +92,9 @@ pub async fn start_recording(
         let handle = streaming::spawn_streaming_worker(app.clone(), state_arc.clone());
         *lock_or_recover(&state.streaming_handle) = Some(handle);
     } else if !backend_present {
-        log::debug!("Streaming worker not started: no backend loaded");
+        log::info!("Streaming worker not started: no backend loaded");
     } else {
-        log::debug!("Streaming worker not started: live preview disabled in settings");
+        log::info!("Streaming worker not started: live preview disabled in settings");
     }
 
     // Spawn the amplitude emitter on the tokio runtime so the wake-ups are

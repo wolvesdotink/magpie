@@ -219,19 +219,25 @@ impl TranscriptionBackend for WhisperBackend {
             }
         }
 
-        // Wire cancellation into whisper.cpp's abort_callback ONLY for
-        // partial-preview decodes. The streaming worker uses it to bail a
-        // stale pass when the user releases the hotkey. Final-mode decodes
-        // run after recording stops and have no caller-side cancellation —
-        // and on macOS the abort_callback poll interacts badly with the
-        // CoreML/Metal encoder path, surfacing as `GenericError(-6)`
-        // ("failed to encode") on real audio. v0.1.1 didn't set the
-        // callback at all and worked; gate it to PartialPreview to restore
-        // that path for the dictation flow.
-        if matches!(opts.mode, TranscribeMode::PartialPreview) {
-            let cancel_token = cancel.clone();
-            params.set_abort_callback_safe(move || cancel_token.is_cancelled());
-        }
+        // Cancellation is intentionally NOT wired into whisper.cpp's
+        // abort_callback for either mode. On macOS the abort_callback poll
+        // interacts badly with the CoreML/Metal encoder path, surfacing as
+        // `GenericError(-6)` ("failed to encode") on real audio or — more
+        // insidiously — returning empty text without any error at all.
+        // Final-mode dropped the callback first (v0.1.1 worked without it).
+        // PartialPreview originally kept it for stale-pass interruption,
+        // but the same encoder interaction was silently killing partials:
+        // worker would run, every decode would produce empty text, the
+        // streaming worker's `if !out.text.is_empty()` gate dropped them,
+        // and the user saw no caption pill. Removing it here matches Final.
+        //
+        // Caller-side cancellation is still correct: the streaming worker
+        // checks `cancel.is_cancelled()` before AND after each decode
+        // (`streaming.rs`), and `stop_recording` bounds the wait with a
+        // 2 s `timeout` on the worker join. A stale decode in flight
+        // when the user releases the hotkey costs at most one extra
+        // ~200-400 ms before the worker exits — the result is dropped.
+        let _ = cancel;
 
         state
             .full(params, audio)

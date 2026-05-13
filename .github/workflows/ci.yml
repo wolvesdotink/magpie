@@ -1,5 +1,5 @@
 # =============================================================================
-# ci.yml — fast checks on every PR and push to main.
+# ci.yml — fast checks on every PR.
 # =============================================================================
 #
 # This pipeline gates merges. It is intentionally split from release.yml so
@@ -26,8 +26,6 @@ name: ci
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}

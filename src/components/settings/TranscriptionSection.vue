@@ -23,6 +23,7 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 const {
   settings,
   correctionModels,
+  currentModel,
   updateRemoveFillers,
   updateSelfCorrection,
   updateStreamingPreview,
@@ -191,6 +192,12 @@ onUnmounted(() => {
         @update:model-value="updateStreamingPreview($event)"
       />
     </SettingsRow>
+
+    <BaseCard v-if="settings?.streamingPreview && !currentModel" tone="gold" class="mt-2">
+      <span class="text-[10px] text-gold leading-snug">
+        Select a transcription model below to see live captions.
+      </span>
+    </BaseCard>
 
     <SettingsRow
       label="Self-correction cleanup"

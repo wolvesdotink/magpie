@@ -1,7 +1,7 @@
 //! Streaming preview worker.
 //!
 //! Spawned by `start_recording`, torn down by `stop_recording`. While the
-//! user is dictating, this loops every ~1.5s, snapshots the growing audio
+//! user is dictating, this loops every ~300 ms, snapshots the growing audio
 //! buffer, runs a cheap (`PartialPreview`) decode through whatever backend
 //! is loaded, and emits a `partial-transcription` event the overlay can
 //! render as a live caption. The final, paste-quality decode still happens
@@ -25,7 +25,7 @@ use crate::state::{lock_or_recover, AppState};
 
 use super::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
 
-const PARTIAL_INTERVAL_MS: u64 = 1500;
+const PARTIAL_INTERVAL_MS: u64 = 300;
 /// Skip partials until we have at least 1s of audio at 16kHz. Whisper hates
 /// very short clips and tends to hallucinate on them.
 const MIN_TOTAL_SAMPLES_AT_16K: usize = 16_000;
@@ -63,6 +63,15 @@ pub fn spawn_streaming_worker(app: AppHandle, state: Arc<AppState>) -> Streaming
     }
 }
 
+/// After this many consecutive empty decodes, log a one-shot warning. The
+/// streaming worker is silently producing no captions — usually a sign that
+/// whisper.cpp's PartialPreview path is failing in a way that returns
+/// `Ok(empty)` rather than `Err` (e.g. the macOS CoreML/Metal encoder edge
+/// case that prompted dropping the abort_callback). Three polls = ~4.5 s
+/// of speech with no caption, which is well past "we should have something
+/// to show by now".
+const EMPTY_DECODE_WARN_THRESHOLD: usize = 3;
+
 async fn run_loop(
     app: AppHandle,
     state: Arc<AppState>,
@@ -71,6 +80,9 @@ async fn run_loop(
 ) {
     let mut last_processed_samples: u64 = 0;
     let mut tick = Instant::now() + Duration::from_millis(PARTIAL_INTERVAL_MS);
+    let mut consecutive_empty: usize = 0;
+    let mut empty_warned = false;
+    log::info!("Streaming worker spawned");
 
     loop {
         let now = Instant::now();
@@ -137,6 +149,12 @@ async fn run_loop(
 
         match result {
             Ok(Ok(out)) if !out.text.is_empty() => {
+                consecutive_empty = 0;
+                log::info!(
+                    "Partial worker emitting: \"{}\" ({}ms)",
+                    out.text,
+                    out.duration_ms
+                );
                 events::emit_event(
                     &app,
                     event_names::PARTIAL_TRANSCRIPTION,
@@ -146,13 +164,24 @@ async fn run_loop(
                     },
                 );
             }
-            Ok(Ok(_)) => {} // empty text — skip emit
+            Ok(Ok(_)) => {
+                consecutive_empty += 1;
+                if !empty_warned && consecutive_empty >= EMPTY_DECODE_WARN_THRESHOLD {
+                    empty_warned = true;
+                    log::warn!(
+                        "Partial worker: {} consecutive empty decodes — captions will not appear. \
+                         Likely whisper.cpp PartialPreview returning empty (CoreML/Metal encoder \
+                         edge case on macOS). Final-mode transcription on stop is unaffected.",
+                        consecutive_empty
+                    );
+                }
+            }
             Ok(Err(e)) => log::warn!("Partial transcribe failed: {}", e),
             Err(e) => log::warn!("Partial task panicked: {}", e),
         }
     }
 
-    log::debug!("Streaming worker exiting");
+    log::info!("Streaming worker exiting");
 }
 
 // Compile-time regression guards: zeroing these would make the worker either
@@ -160,5 +189,5 @@ async fn run_loop(
 // (MIN_TOTAL_SAMPLES_AT_16K=0). Using `const _` instead of a #[test] because
 // these are compile-time constants — clippy correctly objects to runtime
 // assert!(true) on them.
-const _: () = assert!(PARTIAL_INTERVAL_MS >= 500);
+const _: () = assert!(PARTIAL_INTERVAL_MS >= 100);
 const _: () = assert!(MIN_TOTAL_SAMPLES_AT_16K >= 8_000);
