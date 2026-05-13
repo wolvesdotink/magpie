@@ -1,11 +1,11 @@
 {
-  "version": "0.1.21-beta.3",
-  "notes": "- Render update notes as structured blocks with inline formatting\n- Add per-app profiles and reusable styles\n- Show installed version in Updates settings section\n- Always diff release notes against last stable tag\n- Check both channels on beta and pick the newer release\n- Add automated release notes generation to release workflow\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.20...v0.1.21-beta.3",
-  "pub_date": "2026-05-13T13:30:42Z",
+  "version": "0.1.21-beta.4",
+  "notes": "- Fix editor visibility to show only for the active item\n- Add transcription history window with search and re-paste\n- Render update notes as structured blocks with inline formatting\n- Add per-app profiles and reusable styles\n- Show installed version in Updates settings section\n- Always diff release notes against last stable tag\n- Check both channels on beta and pick the newer release\n- Add automated release notes generation to release workflow\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.20...v0.1.21-beta.4",
+  "pub_date": "2026-05-13T14:10:49Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzdscmNFNWVqNm9kWGJabEpUbTFnUGk4T09JNWQ5cUZlMTRBQ0pUbTdwV1lkTDZSRWlFUWJhdzVIaFhodFVCdGFkSnlsbEtaUlFkQjNBOGxYMlZLaWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4Njc4OTgzCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKcENUTSt0RjM0OTdKUUdUcDJLcDFrZktQQWkxYWtkMDNIQ0JSU2NsWHZsWi9RalNDNSs4eTE3RjJvZkZGV2lUTXNIV1FCTWZiY2FNbHFYWFZFVHlHQ1E9PQo=",
-      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.21-beta.3/Magpie.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzdTWTFiRVJtb3NtdXR2QlZnQzNUU2toaWUwOVJtMlp1QjdDQk91UnQzdXczUGl1OE1JVFFDTzlSV0M4dnBQVWlueTZERUdVSzh0MUt5Yi90L0NIRndFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NjgxMzk0CWZpbGU6TWFncGllLmFwcC50YXIuZ3oKakJTVDl1Ny9reUV1WEVaTUlaVnVTQTkzaDUrek16Z0NiaEQ2eGN6ZUE1d29PcnlXWkRZdVFodllSWnFVbi94U3FjSUdhQ3BKcHNGQllLNTV3dVh5Q2c9PQo=",
+      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.21-beta.4/Magpie.app.tar.gz"
     }
   }
 }
