@@ -287,12 +287,16 @@ fn window_event_handler(window: &tauri::Window, event: &tauri::WindowEvent) {
                 let _ = window.hide();
             }
         }
-        "history" => {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        "history" => match event {
+            tauri::WindowEvent::Focused(false) => {
+                let _ = window.hide();
+            }
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
             }
-        }
+            _ => {}
+        },
         _ => {}
     }
 }

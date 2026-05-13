@@ -20,14 +20,14 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const draft = ref<Style>(structuredClone(props.style));
+const draft = ref<Style>(JSON.parse(JSON.stringify(props.style)));
 const { previewStyle } = useStyles();
 const { profiles } = useProfiles();
 
 watch(
   () => props.style,
   (next) => {
-    draft.value = structuredClone(next);
+    draft.value = JSON.parse(JSON.stringify(next));
   },
 );
 

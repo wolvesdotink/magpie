@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import HistoryView from '@/components/HistoryView.vue';
 
@@ -7,6 +8,26 @@ const appWindow = getCurrentWindow();
 async function closeWindow() {
   await appWindow.hide();
 }
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    void closeWindow();
+    return;
+  }
+  if (e.key.toLowerCase() === 'w' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+    e.preventDefault();
+    void closeWindow();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
 <template>
@@ -22,6 +43,7 @@ async function closeWindow() {
       >
         <h1 class="text-[15px] font-bold tracking-tight text-ink">History</h1>
         <button
+          data-tauri-drag-region="false"
           class="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-ink hover:bg-raised transition-all duration-150 active:scale-90"
           title="Close"
           @click="closeWindow"

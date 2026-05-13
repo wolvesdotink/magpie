@@ -18,7 +18,7 @@ const emit = defineEmits<{
   'edit-style': [styleId: string];
 }>();
 
-const draft = ref<AppProfile>(structuredClone(props.profile));
+const draft = ref<AppProfile>(JSON.parse(JSON.stringify(props.profile)));
 const detectError = ref<string | null>(null);
 
 const { detectFrontmostApp } = useProfiles();
@@ -27,7 +27,7 @@ const { styles } = useStyles();
 watch(
   () => props.profile,
   (next) => {
-    draft.value = structuredClone(next);
+    draft.value = JSON.parse(JSON.stringify(next));
   },
 );
 
