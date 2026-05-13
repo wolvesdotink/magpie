@@ -18,6 +18,8 @@ pub mod event_names {
     pub const CORRECTION_COMPLETE: &str = "correction-complete";
     pub const AUDIO_AMPLITUDE: &str = "audio-amplitude";
     pub const VOCABULARY_LEARNED: &str = "vocabulary-learned";
+    pub const STYLES_CHANGED: &str = "styles-changed";
+    pub const PROFILES_CHANGED: &str = "profiles-changed";
 }
 
 #[derive(Clone, Serialize)]
@@ -77,6 +79,10 @@ pub struct AudioAmplitudePayload {
 pub struct VocabularyLearnedPayload {
     pub wrong: String,
     pub correct: String,
+    /// When the auto-learned entry was attributed to a profile, this is the
+    /// profile id. `None` means it went into the global vocabulary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_id: Option<String>,
 }
 
 /// Helper to emit typed events to the frontend
@@ -185,15 +191,30 @@ mod tests {
     }
 
     #[test]
-    fn vocabulary_learned_payload_shape() {
+    fn vocabulary_learned_payload_shape_global() {
         let payload = VocabularyLearnedPayload {
             wrong: "cubernetes".into(),
             correct: "Kubernetes".into(),
+            profile_id: None,
         };
         let value = serde_json::to_value(&payload).unwrap();
         assert_eq!(
             value,
             json!({ "wrong": "cubernetes", "correct": "Kubernetes" })
+        );
+    }
+
+    #[test]
+    fn vocabulary_learned_payload_shape_profile_scoped() {
+        let payload = VocabularyLearnedPayload {
+            wrong: "cubernetes".into(),
+            correct: "Kubernetes".into(),
+            profile_id: Some("profile-slack".into()),
+        };
+        let value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(
+            value,
+            json!({ "wrong": "cubernetes", "correct": "Kubernetes", "profileId": "profile-slack" })
         );
     }
 

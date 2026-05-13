@@ -183,6 +183,45 @@ impl From<crate::settings::SettingsError> for CommandError {
     }
 }
 
+impl From<crate::styles::StylesError> for CommandError {
+    fn from(e: crate::styles::StylesError) -> Self {
+        use crate::styles::StylesError as E;
+        match e {
+            E::NotFound { id } => Self::InvalidArgument {
+                message: format!("style not found: {id}"),
+            },
+            E::BuiltinDelete { name } => Self::InvalidArgument {
+                message: format!("'{name}' is a built-in style and cannot be deleted"),
+            },
+            E::StyleInUse { profile_names } => Self::InvalidArgument {
+                message: format!(
+                    "style is referenced by profiles: {}",
+                    profile_names.join(", ")
+                ),
+            },
+            E::Invalid { reason } => Self::InvalidArgument { message: reason },
+            other => Self::Settings {
+                message: other.to_string(),
+            },
+        }
+    }
+}
+
+impl From<crate::profiles::ProfilesError> for CommandError {
+    fn from(e: crate::profiles::ProfilesError) -> Self {
+        use crate::profiles::ProfilesError as E;
+        match e {
+            E::NotFound { id } => Self::InvalidArgument {
+                message: format!("profile not found: {id}"),
+            },
+            E::Invalid { reason } => Self::InvalidArgument { message: reason },
+            other => Self::Settings {
+                message: other.to_string(),
+            },
+        }
+    }
+}
+
 impl From<crate::transcription::backend::TranscribeError> for CommandError {
     fn from(e: crate::transcription::backend::TranscribeError) -> Self {
         use crate::transcription::backend::TranscribeError as T;

@@ -41,6 +41,9 @@ export interface AudioAmplitudePayload {
 export interface VocabularyLearnedPayload {
   wrong: string;
   correct: string;
+  /** Profile id when the auto-learned entry was attributed to a profile,
+   *  omitted (undefined) when it went into the global vocabulary. */
+  profileId?: string;
 }
 
 // ── Event Listeners ────────────────────────────────────────────────
@@ -141,4 +144,12 @@ export function onVocabularyLearned(
   return listen('vocabulary-learned', (event) => {
     callback(event.payload as VocabularyLearnedPayload);
   });
+}
+
+export function onStylesChanged(callback: () => void): Promise<UnlistenFn> {
+  return listen('styles-changed', () => callback());
+}
+
+export function onProfilesChanged(callback: () => void): Promise<UnlistenFn> {
+  return listen('profiles-changed', () => callback());
 }

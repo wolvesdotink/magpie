@@ -12,22 +12,28 @@
 
 pub mod app;
 pub mod correction_models;
+pub mod frontmost_app;
 pub mod hotkey;
 pub mod models;
 pub mod permissions;
+pub mod profiles;
 pub mod recording;
 pub mod settings;
+pub mod styles;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod updater;
 pub mod vocabulary;
 
 pub use app::*;
 pub use correction_models::*;
+pub use frontmost_app::*;
 pub use hotkey::*;
 pub use models::*;
 pub use permissions::*;
+pub use profiles::*;
 pub use recording::*;
 pub use settings::*;
+pub use styles::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use updater::*;
 pub use vocabulary::*;

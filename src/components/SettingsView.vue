@@ -6,6 +6,8 @@ import ActivationSection from '@/components/settings/ActivationSection.vue';
 import GeneralSection from '@/components/settings/GeneralSection.vue';
 import LanguageSection from '@/components/settings/LanguageSection.vue';
 import ModelSection from '@/components/settings/ModelSection.vue';
+import ProfilesSection from '@/components/settings/ProfilesSection.vue';
+import StylesSection from '@/components/settings/StylesSection.vue';
 import TranscriptionSection from '@/components/settings/TranscriptionSection.vue';
 import VocabularySection from '@/components/settings/VocabularySection.vue';
 import SettingsSidebar from '@/components/shared/SettingsSidebar.vue';
@@ -29,6 +31,8 @@ type SectionId =
   | 'activation'
   | 'transcription'
   | 'vocabulary'
+  | 'profiles'
+  | 'styles'
   | 'general'
   | 'updates';
 
@@ -62,6 +66,16 @@ const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
     id: 'vocabulary',
     label: 'Vocabulary',
     icon: '<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>',
+  },
+  {
+    id: 'profiles',
+    label: 'App Profiles',
+    icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  },
+  {
+    id: 'styles',
+    label: 'Styles',
+    icon: '<circle cx="13.5" cy="6.5" r="2.5"/><path d="M19 19H5l4-6 3 4 2-3z"/>',
   },
   {
     id: 'updates',
@@ -123,6 +137,17 @@ const SEARCH_INDEX: { section: SectionId; label: string; keywords: string }[] = 
     section: 'vocabulary',
     label: 'Add word manually',
     keywords: 'vocabulary manual word add custom',
+  },
+  {
+    section: 'profiles',
+    label: 'Per-app profiles',
+    keywords: 'profiles app slack mail terminal vscode cursor bundle id frontmost detect',
+  },
+  {
+    section: 'styles',
+    label: 'Reusable styles',
+    keywords:
+      'styles casing snake camel pascal kebab punctuation casual formal prompt regex custom rules',
   },
   { section: 'general', label: 'Launch at login', keywords: 'autostart startup login boot launch' },
   {
@@ -211,6 +236,11 @@ onUnmounted(() => {
         <ActivationSection v-show="activeSectionId === 'activation'" />
         <TranscriptionSection v-show="activeSectionId === 'transcription'" />
         <VocabularySection v-show="activeSectionId === 'vocabulary'" />
+        <ProfilesSection
+          v-show="activeSectionId === 'profiles'"
+          @navigate-to-style="jumpToSection('styles')"
+        />
+        <StylesSection v-show="activeSectionId === 'styles'" />
         <GeneralSection v-show="activeSectionId === 'general'" />
         <div v-show="activeSectionId === 'updates'">
           <UpdatesSection />

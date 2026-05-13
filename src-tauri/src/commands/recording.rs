@@ -25,9 +25,12 @@ use crate::correction_detector;
 use crate::events::{
     self, event_names, AudioAmplitudePayload, TranscriptionError, TranscriptionResult,
 };
+use crate::frontmost_app;
 use crate::output;
 use crate::overlay;
+use crate::resolver;
 use crate::state::{lock_or_recover, AppState};
+use crate::styles::CorrectionOverride;
 use crate::transcription::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
 use crate::transcription::postprocess;
 use crate::transcription::streaming;
@@ -64,6 +67,25 @@ pub async fn start_recording(
     }
 
     let state_arc = state.inner().clone();
+
+    // Capture frontmost app BEFORE the audio stream opens so we can attribute
+    // this recording's profile + vocabulary learning to wherever the user's
+    // intent began (Magpie's own settings window does not steal focus during
+    // start_recording, so this is the right moment).
+    {
+        let mut current_app = lock_or_recover(&state.current_recording_app);
+        *current_app = frontmost_app::detect();
+        if let Some(ref app) = *current_app {
+            log::info!(
+                "Recording target: {} ({})",
+                app.name,
+                app.bundle_id
+            );
+        } else {
+            log::debug!("No frontmost app detected at recording start");
+        }
+    }
+
     let (stream, sample_rate) = audio::capture::start_recording(&state_arc)?;
 
     {
@@ -229,16 +251,47 @@ pub async fn stop_recording(
         // user before the overlay window hides itself.
         let mut had_error = false;
 
-        // Get language setting and vocabulary data
+        // Get language setting (needed before resolver call, which doesn't
+        // touch language).
         let language = {
             let settings = lock_or_recover(&state_arc.settings);
             settings.language.clone()
         };
 
-        let (initial_prompt, vocab_replacements) = {
-            let vocab = lock_or_recover(&state_arc.vocabulary);
-            (vocab.get_initial_prompt_words(), vocab.get_replacements())
+        // Resolve effective configuration (profile match → style + vocab merge
+        // + compiled custom rules + correction override).
+        let effective = match resolver::resolve(
+            &state_arc.current_recording_app,
+            &state_arc.profiles,
+            &state_arc.styles,
+            &state_arc.vocabulary,
+            &state_arc.settings,
+        ) {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("Effective resolution failed: {}", e);
+                events::emit_event(
+                    &app_clone,
+                    event_names::TRANSCRIPTION_ERROR,
+                    TranscriptionError {
+                        error: format!("Style configuration error: {}", e),
+                    },
+                );
+                state_arc.set_processing(false);
+                tray::set_tray_icon(&app_clone, TrayState::Idle);
+                tray::set_tray_status(&app_clone, "Magpie — Ready");
+                overlay::hide_overlay(&app_clone);
+                return;
+            }
         };
+
+        let initial_prompt = effective.initial_prompt;
+        let vocab_replacements = effective.vocab_replacements;
+        let formatting = effective.formatting;
+        let compiled_transforms = effective.compiled_transforms;
+        let correction_override = effective.correction;
+        let resolved_remove_fillers = effective.remove_fillers;
+        let vocab_learning_enabled = effective.vocab_learning_enabled;
 
         let prompt_ref = if initial_prompt.is_empty() {
             None
@@ -269,27 +322,50 @@ pub async fn stop_recording(
                 Ok(out) => {
                     let raw_text = out.text;
                     let duration_ms = out.duration_ms;
-                    // Post-process
-                    let (filler_words, remove_fillers) = {
+                    // Post-process with style-resolved formatting + custom rules.
+                    let filler_words = {
                         let settings = lock_or_recover(&state_arc.settings);
-                        (settings.filler_words.clone(), settings.remove_fillers)
+                        settings.filler_words.clone()
                     };
 
                     let text = postprocess::postprocess(
                         &raw_text,
                         &filler_words,
-                        remove_fillers,
+                        resolved_remove_fillers,
                         &vocab_replacements,
+                        &formatting,
+                        &compiled_transforms,
                     );
 
-                    // Self-correction cleanup (if enabled)
+                    // Self-correction cleanup. Honors the style's CorrectionOverride:
+                    //   Inherit  → use global self_correction toggle + default prompt
+                    //   Disabled → skip entirely
+                    //   Casual/Formal/Custom → run with overridden prompt (still gated
+                    //                          on global toggle so a user with global
+                    //                          correction off isn't surprised)
                     let text = {
-                        let self_correction_enabled = {
+                        let self_correction_global = {
                             let settings = lock_or_recover(&state_arc.settings);
                             settings.self_correction
                         };
 
-                        if self_correction_enabled && !text.is_empty() {
+                        let (should_correct, custom_prompt) = match &correction_override {
+                            CorrectionOverride::Disabled => (false, None),
+                            CorrectionOverride::Inherit => (self_correction_global, None),
+                            CorrectionOverride::Casual => (
+                                self_correction_global,
+                                Some(correction::engine::CASUAL_SYSTEM_PROMPT),
+                            ),
+                            CorrectionOverride::Formal => (
+                                self_correction_global,
+                                Some(correction::engine::FORMAL_SYSTEM_PROMPT),
+                            ),
+                            CorrectionOverride::Custom { prompt } => {
+                                (self_correction_global, Some(prompt.as_str()))
+                            }
+                        };
+
+                        if should_correct && !text.is_empty() {
                             tray::set_tray_status(&app_clone, "Magpie \u{2014} Cleaning up...");
                             events::emit_event(&app_clone, event_names::CORRECTION_STARTED, ());
 
@@ -299,9 +375,15 @@ pub async fn stop_recording(
                             if let (Some(ref backend), Some(ref model)) =
                                 (&*backend_guard, &*model_guard)
                             {
-                                match correction::engine::correct_transcription(
-                                    backend, model, &text,
-                                ) {
+                                let result = match custom_prompt {
+                                    Some(p) => correction::engine::correct_transcription_with_prompt(
+                                        backend, model, &text, p,
+                                    ),
+                                    None => correction::engine::correct_transcription(
+                                        backend, model, &text,
+                                    ),
+                                };
+                                match result {
                                     Ok(corrected) if !corrected.is_empty() => {
                                         log::info!(
                                             "Self-correction: \"{}\" -> \"{}\"",
@@ -327,7 +409,7 @@ pub async fn stop_recording(
                                     }
                                 }
                             } else {
-                                log::debug!("Self-correction enabled but no model loaded");
+                                log::debug!("Self-correction requested but no model loaded");
                                 text
                             }
                         } else {
@@ -349,15 +431,17 @@ pub async fn stop_recording(
                             log::info!("Pasted {} chars", text.len());
 
                             // Start correction detection if vocabulary learning is enabled
-                            let vocab_learning_enabled = {
-                                let settings = lock_or_recover(&state_arc.settings);
-                                settings.vocabulary_learning
-                            };
+                            // (style/profile override applied during resolution).
                             if vocab_learning_enabled {
+                                let captured_app = {
+                                    let lock = lock_or_recover(&state_arc.current_recording_app);
+                                    lock.clone()
+                                };
                                 correction_detector::start_detection(
                                     text.clone(),
                                     state_arc.clone(),
                                     app_clone.clone(),
+                                    captured_app,
                                 );
                             }
                         }

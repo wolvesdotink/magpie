@@ -11,9 +11,12 @@ use parking_lot::{Mutex, MutexGuard};
 use tokio::sync::mpsc;
 
 use crate::audio::AudioRingBuffer;
+use crate::frontmost_app::FrontmostApp;
 use crate::hotkey::FnKeyMonitorHandle;
+use crate::profiles::ProfilesStore;
 use crate::recording::RecordingCommand;
 use crate::settings::UserSettings;
+use crate::styles::StylesStore;
 use crate::transcription::backend::{CancellationToken, TranscriptionBackend};
 use crate::transcription::streaming::StreamingHandle;
 use crate::vocabulary::Vocabulary;
@@ -37,13 +40,17 @@ use crate::vocabulary::Vocabulary;
 /// 5. `active_stream`
 /// 6. `streaming_handle`
 /// 7. `last_transcription`
-/// 8. `vocabulary`
-/// 9. `llama_backend`, `correction_model`, `current_correction_model_path`
-///    (locked together when reloading correction models)
-/// 10. `active_downloads`
-/// 11. `pending_reload`
-/// 12. `fn_key_monitor`, `recording_tx`, `current_shortcut` (orchestration
+/// 8. `styles`
+/// 9. `profiles`
+/// 10. `vocabulary`
+/// 11. `llama_backend`, `correction_model`, `current_correction_model_path`
+///     (locked together when reloading correction models)
+/// 12. `active_downloads`
+/// 13. `pending_reload`
+/// 14. `fn_key_monitor`, `recording_tx`, `current_shortcut` (orchestration
 ///     handles; rarely held with anything else)
+/// 15. `current_recording_app` (set at recording start, read at resolution
+///     time; never held with anything else)
 ///
 /// The atomic fields (`recording`, `processing`, `amplitude_rms`,
 /// `suppress_hide`) are lock-free and have no ordering requirement.
@@ -96,6 +103,14 @@ pub struct AppState {
     pub amplitude_rms: AtomicU32,
     /// Learned vocabulary for correction biasing
     pub vocabulary: Mutex<Vocabulary>,
+    /// Reusable styles library (formatting + correction + custom rules).
+    pub styles: Mutex<StylesStore>,
+    /// Per-app profiles binding bundle IDs to styles + scoped vocab.
+    pub profiles: Mutex<ProfilesStore>,
+    /// Snapshot of the frontmost app at `start_recording` time. Cleared on
+    /// recording end. Lower rank than vocabulary; written at recording start,
+    /// read during transcription resolution and auto-learning attribution.
+    pub current_recording_app: Mutex<Option<FrontmostApp>>,
     /// When true, the next `Focused(false)` event on the main window will
     /// NOT hide the window. Used when we intentionally launch an external
     /// app (e.g. System Preferences) that steals focus.
@@ -155,6 +170,9 @@ impl AppState {
             current_correction_model_path: Mutex::new(None),
             amplitude_rms: AtomicU32::new(0),
             vocabulary: Mutex::new(Vocabulary::load()),
+            styles: Mutex::new(StylesStore::load()),
+            profiles: Mutex::new(ProfilesStore::load()),
+            current_recording_app: Mutex::new(None),
             suppress_hide: AtomicBool::new(false),
             fn_key_monitor: Mutex::new(None),
             recording_tx: Mutex::new(None),

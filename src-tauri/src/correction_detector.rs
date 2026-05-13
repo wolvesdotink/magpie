@@ -13,6 +13,7 @@ use tauri::AppHandle;
 
 use crate::accessibility;
 use crate::events::{self, event_names, VocabularyLearnedPayload};
+use crate::frontmost_app::FrontmostApp;
 use crate::state::{lock_or_recover, AppState};
 use crate::vocabulary::VocabularySource;
 
@@ -34,12 +35,18 @@ const MIN_TEXT_RETENTION_RATIO: f64 = 0.2;
 /// 3. Waits for the user to make corrections
 /// 4. Reads again (snapshot 2)
 /// 5. Diffs to find word-level corrections
-/// 6. Stores any corrections in the vocabulary
-pub fn start_detection(pasted_text: String, state: Arc<AppState>, app: AppHandle) {
+/// 6. Stores any corrections in the matched profile's vocabulary (if any) or
+///    the global vocabulary, based on the resolution captured at recording time.
+pub fn start_detection(
+    pasted_text: String,
+    state: Arc<AppState>,
+    app: AppHandle,
+    recording_app: Option<FrontmostApp>,
+) {
     let _ = std::thread::Builder::new()
         .name("correction-detector".into())
         .spawn(move || {
-            if let Err(e) = run_detection(&pasted_text, &state, &app) {
+            if let Err(e) = run_detection(&pasted_text, &state, &app, recording_app.as_ref()) {
                 log::debug!("Correction detection skipped: {}", e);
             }
         })
@@ -48,7 +55,12 @@ pub fn start_detection(pasted_text: String, state: Arc<AppState>, app: AppHandle
         });
 }
 
-fn run_detection(pasted_text: &str, state: &Arc<AppState>, app: &AppHandle) -> Result<(), String> {
+fn run_detection(
+    pasted_text: &str,
+    state: &Arc<AppState>,
+    app: &AppHandle,
+    recording_app: Option<&FrontmostApp>,
+) -> Result<(), String> {
     // Wait for paste to settle
     std::thread::sleep(Duration::from_millis(SETTLE_DELAY_MS));
 
@@ -127,27 +139,77 @@ fn run_detection(pasted_text: &str, state: &Arc<AppState>, app: &AppHandle) -> R
         return Ok(());
     }
 
-    // Store corrections in vocabulary
-    let mut vocab = lock_or_recover(&state.vocabulary);
-    for (wrong, correct) in &corrections {
-        vocab.add_or_update(wrong, correct, VocabularySource::Auto);
-        events::emit_event(
-            app,
-            event_names::VOCABULARY_LEARNED,
-            VocabularyLearnedPayload {
-                wrong: wrong.clone(),
-                correct: correct.clone(),
-            },
-        );
-        log::info!(
-            "Auto-learned vocabulary correction: \"{}\" -> \"{}\"",
-            wrong,
-            correct
-        );
-    }
+    // Find the target profile (if any). Profile lookup is independent of
+    // global vocabulary, so do it BEFORE acquiring the vocabulary lock.
+    let target_profile_id = recording_app.and_then(|app| {
+        let p = lock_or_recover(&state.profiles);
+        p.find_by_bundle(&app.bundle_id).map(|p| p.id.clone())
+    });
 
-    if let Err(e) = vocab.save() {
-        log::error!("Failed to save vocabulary after learning: {}", e);
+    if let Some(ref profile_id) = target_profile_id {
+        // Profile-scoped attribution.
+        let mut profiles = lock_or_recover(&state.profiles);
+        for (wrong, correct) in &corrections {
+            if let Err(e) = profiles.add_vocab_to_profile(
+                profile_id,
+                wrong,
+                correct,
+                VocabularySource::Auto,
+            ) {
+                log::warn!(
+                    "Failed to attribute vocab to profile {}: {}; falling back to global",
+                    profile_id,
+                    e
+                );
+                let mut vocab = lock_or_recover(&state.vocabulary);
+                vocab.add_or_update(wrong, correct, VocabularySource::Auto);
+                if let Err(e) = vocab.save() {
+                    log::error!("Failed to save vocabulary after fallback learning: {}", e);
+                }
+                continue;
+            }
+            events::emit_event(
+                app,
+                event_names::VOCABULARY_LEARNED,
+                VocabularyLearnedPayload {
+                    wrong: wrong.clone(),
+                    correct: correct.clone(),
+                    profile_id: Some(profile_id.clone()),
+                },
+            );
+            log::info!(
+                "Auto-learned vocabulary correction for profile {}: \"{}\" -> \"{}\"",
+                profile_id,
+                wrong,
+                correct
+            );
+        }
+        if let Err(e) = profiles.save() {
+            log::error!("Failed to save profiles after profile-scoped learning: {}", e);
+        }
+    } else {
+        // Global attribution.
+        let mut vocab = lock_or_recover(&state.vocabulary);
+        for (wrong, correct) in &corrections {
+            vocab.add_or_update(wrong, correct, VocabularySource::Auto);
+            events::emit_event(
+                app,
+                event_names::VOCABULARY_LEARNED,
+                VocabularyLearnedPayload {
+                    wrong: wrong.clone(),
+                    correct: correct.clone(),
+                    profile_id: None,
+                },
+            );
+            log::info!(
+                "Auto-learned vocabulary correction (global): \"{}\" -> \"{}\"",
+                wrong,
+                correct
+            );
+        }
+        if let Err(e) = vocab.save() {
+            log::error!("Failed to save vocabulary after learning: {}", e);
+        }
     }
 
     Ok(())

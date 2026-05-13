@@ -82,6 +82,96 @@ export interface VocabularyEntry {
   lastUsed: string;
 }
 
+// ── Styles + Profiles + Frontmost App ─────────────────────────────
+
+export type CasingMode =
+  | 'sentence'
+  | 'preserve'
+  | 'lowercase'
+  | 'uppercase'
+  | 'snakeCase'
+  | 'kebabCase'
+  | 'camelCase'
+  | 'pascalCase'
+  | 'screamSnake';
+
+export type PunctuationMode =
+  | { kind: 'auto' }
+  | { kind: 'strip' }
+  | { kind: 'sentenceOnly' }
+  | { kind: 'custom'; chars: string[] };
+
+export type CorrectionOverride =
+  | { kind: 'inherit' }
+  | { kind: 'disabled' }
+  | { kind: 'casual' }
+  | { kind: 'formal' }
+  | { kind: 'custom'; prompt: string };
+
+export interface FormattingRules {
+  casing: CasingMode;
+  punctuation: PunctuationMode;
+  removeTrailingPeriod: boolean;
+  autoCapitalizeAfterSentence: boolean;
+  collapseWhitespace: boolean;
+}
+
+export type TransformKind =
+  | {
+      kind: 'replace';
+      pattern: string;
+      replacement: string;
+      isRegex: boolean;
+      caseSensitive: boolean;
+      wholeWord: boolean;
+    }
+  | { kind: 'prepend'; text: string }
+  | { kind: 'append'; text: string }
+  | { kind: 'trimEdges' }
+  | { kind: 'squeezeChars'; chars: string };
+
+export interface TextTransform {
+  id: string;
+  enabled: boolean;
+  label: string | null;
+  kind: TransformKind;
+}
+
+export interface Style {
+  id: string;
+  name: string;
+  description: string | null;
+  builtin: boolean;
+  formatting: FormattingRules;
+  correction: CorrectionOverride;
+  customRules: TextTransform[];
+  fillerOverride: boolean | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AppProfile {
+  id: string;
+  bundleId: string;
+  displayName: string;
+  enabled: boolean;
+  styleId: string;
+  vocabulary: VocabularyEntry[];
+  vocabularyLearningOverride: boolean | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FrontmostApp {
+  bundleId: string;
+  name: string;
+}
+
+export interface ValidationResult {
+  ok: boolean;
+  error: string | null;
+}
+
 // ── Recording ──────────────────────────────────────────────────────
 
 export const startRecording = () => invoke('start_recording');
@@ -195,3 +285,46 @@ export const removeVocabularyEntry = (wrong: string) =>
   invoke('remove_vocabulary_entry', { wrong });
 
 export const clearVocabulary = () => invoke('clear_vocabulary');
+
+// ── Styles ─────────────────────────────────────────────────────────
+
+export const getStyles = () => invoke<Style[]>('get_styles');
+
+export const addStyle = (style: Style) => invoke<Style>('add_style', { style });
+
+export const updateStyle = (id: string, style: Style) =>
+  invoke<Style>('update_style', { id, style });
+
+export const deleteStyle = (id: string) => invoke<void>('delete_style', { id });
+
+export const duplicateStyle = (id: string) => invoke<Style>('duplicate_style', { id });
+
+export const resetStyleToDefault = (id: string) => invoke<Style>('reset_style_to_default', { id });
+
+export const previewStyle = (style: Style, sampleText: string) =>
+  invoke<string>('preview_style', { style, sampleText });
+
+export const validateTransform = (transform: TextTransform) =>
+  invoke<ValidationResult>('validate_transform', { transform });
+
+// ── Profiles ───────────────────────────────────────────────────────
+
+export const getProfiles = () => invoke<AppProfile[]>('get_profiles');
+
+export const addProfile = (profile: AppProfile) => invoke<AppProfile>('add_profile', { profile });
+
+export const updateProfile = (id: string, profile: AppProfile) =>
+  invoke<AppProfile>('update_profile', { id, profile });
+
+export const deleteProfile = (id: string) => invoke<void>('delete_profile', { id });
+
+export const duplicateProfile = (id: string) => invoke<AppProfile>('duplicate_profile', { id });
+
+export const setProfileEnabled = (id: string, enabled: boolean) =>
+  invoke<void>('set_profile_enabled', { id, enabled });
+
+export const resetBuiltInPresets = () => invoke<void>('reset_built_in_presets');
+
+// ── Frontmost App ─────────────────────────────────────────────────
+
+export const getFrontmostApp = () => invoke<FrontmostApp | null>('get_frontmost_app');

@@ -11,6 +11,7 @@ mod constants;
 mod correction;
 mod correction_detector;
 mod events;
+mod frontmost_app;
 mod hotkey;
 #[cfg(target_os = "macos")]
 mod launch_at_login;
@@ -19,10 +20,13 @@ mod models;
 mod output;
 mod overlay;
 mod permissions;
+mod profiles;
 mod recording;
+mod resolver;
 mod settings;
 mod setup;
 mod state;
+mod styles;
 mod transcription;
 mod tray;
 mod vocabulary;
@@ -178,6 +182,23 @@ pub fn run() {
             commands::repair_active_model,
             commands::get_launch_at_login_status,
             commands::open_login_items_settings,
+            // Styles + Profiles + Frontmost App (per-app profiles feature)
+            commands::get_styles,
+            commands::add_style,
+            commands::update_style,
+            commands::delete_style,
+            commands::duplicate_style,
+            commands::reset_style_to_default,
+            commands::preview_style,
+            commands::validate_transform,
+            commands::get_profiles,
+            commands::add_profile,
+            commands::update_profile,
+            commands::delete_profile,
+            commands::duplicate_profile,
+            commands::set_profile_enabled,
+            commands::reset_built_in_presets,
+            commands::get_frontmost_app,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             commands::magpie_updater_check,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
