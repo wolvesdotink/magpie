@@ -1,8 +1,11 @@
 {
-  "version": "0.1.20-beta.2",
-  "notes": "See the release page for details.",
-  "pub_date": "2026-05-13T09:16:54Z",
+  "version": "0.1.21-beta.1",
+  "notes": "- Always diff release notes against last stable tag\n- Check both channels on beta and pick the newer release\n- Add automated release notes generation to release workflow\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.20...v0.1.21-beta.1",
+  "pub_date": "2026-05-13T10:49:57Z",
   "platforms": {
-    "darwin-aarch64": { "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkyb3h5NFFTVkdGT2xMYy9Gd01IWU5nYmE3Yk1hMWRkNHFxeFVRRVFzYmpUQmRla0MyaW80WTFteDVZNjRENjZzQlNubm9zcDhKcW80MUxJeFBtQ0d6VWdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NjYzNzYwCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKdXVzTzYydXdFZGhteWVYVndPYnVtMGdhckZrT1NIT3lmZU5VSHRtN1QwSGppOC9NQk9TbjNBRzMvMndQcEZWY29kaHpoUTk5RFlSNU9nS2VuellkQVE9PQo=", "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.20-beta.2/Magpie.app.tar.gz" }
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzBvdldaTHNCTlJBMk1ydlU5Nml4ZDNQTUFYRm83dS9VZzR3RElrcGJJbDFuS0t1RisvOFJRV2QrSlovVmhwblRZcDNMSWZ3WWRva0Z6YnJyUHhzTHcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NjY5MzQwCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKWnlLNGJPSE9yLzlLMDVZOC9GQ2xMeE9RdExXVmFWNW5wWDBDQldUS1NTQmxRREVmNDFhTXFhdUpTanE3bm1pdzhsb0N1L0NpZk91dWZaTnFrcVBiQnc9PQo=",
+      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.21-beta.1/Magpie.app.tar.gz"
+    }
   }
 }
