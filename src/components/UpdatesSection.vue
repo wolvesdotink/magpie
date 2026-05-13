@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useUpdater } from '@/composables/useUpdater';
+import { parseUpdateNotes } from '@/lib/updateNotes';
 import SettingsSection from '@/components/base/SettingsSection.vue';
 import SettingsRow from '@/components/base/SettingsRow.vue';
 import BaseToggle from '@/components/base/BaseToggle.vue';
@@ -47,13 +48,19 @@ const checkButtonDisabled = computed(
   () => state.value.status === 'checking' || state.value.status === 'downloading',
 );
 
-async function openReleases() {
+const noteBlocks = computed(() => parseUpdateNotes(state.value.notes));
+
+async function openExternal(url: string) {
   try {
     const { openUrl } = await import('@tauri-apps/plugin-opener');
-    await openUrl(RELEASES_URL);
+    await openUrl(url);
   } catch {
-    window.open(RELEASES_URL, '_blank', 'noopener');
+    window.open(url, '_blank', 'noopener');
   }
+}
+
+function openReleases() {
+  return openExternal(RELEASES_URL);
 }
 </script>
 
@@ -96,9 +103,45 @@ async function openReleases() {
         </div>
         <BaseButton variant="primary" size="sm" @click="install"> Install </BaseButton>
       </div>
-      <p v-if="state.notes" class="text-[11px] text-ink-muted leading-snug whitespace-pre-line">
-        {{ state.notes }}
-      </p>
+      <div v-if="noteBlocks.length" class="text-[11px] text-ink-muted leading-snug space-y-1.5">
+        <template v-for="(block, i) in noteBlocks" :key="i">
+          <ul
+            v-if="block.type === 'bullets'"
+            class="list-disc pl-4 space-y-0.5 marker:text-ink-faint"
+          >
+            <li v-for="(item, j) in block.items" :key="j">
+              <template v-for="(part, k) in item" :key="k">
+                <strong v-if="part.type === 'bold'" class="text-ink font-semibold">{{
+                  part.value
+                }}</strong>
+                <a
+                  v-else-if="part.type === 'link'"
+                  href="#"
+                  class="text-gold hover:text-gold-hover underline underline-offset-2 break-all"
+                  @click.prevent="openExternal(part.href)"
+                  >{{ part.label }}</a
+                >
+                <span v-else>{{ part.value }}</span>
+              </template>
+            </li>
+          </ul>
+          <p v-else>
+            <template v-for="(part, k) in block.parts" :key="k">
+              <strong v-if="part.type === 'bold'" class="text-ink font-semibold">{{
+                part.value
+              }}</strong>
+              <a
+                v-else-if="part.type === 'link'"
+                href="#"
+                class="text-gold hover:text-gold-hover underline underline-offset-2 break-all"
+                @click.prevent="openExternal(part.href)"
+                >{{ part.label }}</a
+              >
+              <span v-else>{{ part.value }}</span>
+            </template>
+          </p>
+        </template>
+      </div>
     </BaseCard>
 
     <BaseCard v-else-if="state.status === 'downloading'" padding="lg">
