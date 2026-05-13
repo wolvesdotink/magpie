@@ -89,7 +89,22 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
     let model_submenu = build_model_submenu(app, &state)?;
 
     let separator2 = PredefinedMenuItem::separator(app)?;
-    let history = MenuItem::with_id(app, "history", "History\u{2026}", true, None::<&str>)?;
+    // Omit "History…" entirely when history is disabled — there's nothing
+    // useful behind it. Matches the acceleration-item pattern above.
+    let history_item = {
+        let s = lock_or_recover(&state.settings);
+        if s.history_enabled && s.history_max_entries > 0 {
+            Some(MenuItem::with_id(
+                app,
+                "history",
+                "History\u{2026}",
+                true,
+                None::<&str>,
+            )?)
+        } else {
+            None
+        }
+    };
     let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
     let check_updates = MenuItem::with_id(
         app,
@@ -109,8 +124,12 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::err
         &separator1 as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &model_submenu,
         &separator2,
-        &history,
-        &settings,
+    ]);
+    if let Some(item) = history_item.as_ref() {
+        items.push(item);
+    }
+    items.extend([
+        &settings as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &check_updates,
         &separator3,
         &quit,

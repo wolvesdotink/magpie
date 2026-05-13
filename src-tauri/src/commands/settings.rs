@@ -38,6 +38,13 @@ pub fn update_settings(
     state: State<'_, Arc<AppState>>,
     mut settings: crate::settings::UserSettings,
 ) {
+    // History-disabled state is computed BEFORE the clamp so that a
+    // payload of `history_max_entries == 0` is still recognised as
+    // "disabled" — the clamp would otherwise rewrite it to MIN_ENTRIES
+    // and hide that signal. `!history_enabled` is the primary path; the
+    // zero check is a defensive backstop for hand-edited settings.json.
+    let new_disabled = !settings.history_enabled || settings.history_max_entries == 0;
+
     // Clamp `history_max_entries` server-side so a hand-crafted payload (or
     // a future UI bug) cannot push the on-disk ring outside its supported
     // size envelope. The clamp range lives next to the constants in
@@ -57,6 +64,8 @@ pub fn update_settings(
     }
     let auto_start_changed = current.auto_start != settings.auto_start;
     let new_auto_start = settings.auto_start;
+    let prior_disabled = !current.history_enabled || current.history_max_entries == 0;
+    let disabled_state_changed = prior_disabled != new_disabled;
     *current = settings;
     if let Err(e) = current.save() {
         log::error!("Failed to save settings: {}", e);
@@ -71,18 +80,41 @@ pub fn update_settings(
     // surface a system notification on the main thread.
     drop(current);
 
-    // If the user lowered the cap below the current history length,
-    // proactively trim and notify the History window so it refreshes.
+    // History side-effects: disabling clears the ring outright; otherwise a
+    // lowered cap trims excess entries. Both paths emit HISTORY_ENTRY_ADDED
+    // so the History window's existing listener refreshes.
     // settings (rank 1) is released above; history (rank 7.5) goes next.
     {
         let mut hist = lock_or_recover(&state.history);
-        if hist.len() > new_history_cap {
+        if new_disabled {
+            if hist.len() > 0 {
+                hist.clear();
+                if let Err(e) = hist.save() {
+                    log::warn!("Failed to save cleared history after disable: {}", e);
+                }
+                crate::events::emit_event(
+                    &app,
+                    crate::events::event_names::HISTORY_ENTRY_ADDED,
+                    (),
+                );
+            }
+        } else if hist.len() > new_history_cap {
             hist.truncate_to(new_history_cap);
             if let Err(e) = hist.save() {
                 log::warn!("Failed to save trimmed history after cap change: {}", e);
             }
             crate::events::emit_event(&app, crate::events::event_names::HISTORY_ENTRY_ADDED, ());
         }
+    }
+
+    // Rebuild the tray menu when the disabled state flips so "History…"
+    // appears/disappears live without a restart. Also ping the History
+    // window so it re-renders into / out of the "disabled" message (the
+    // clear/trim branches above only fire when there's something to
+    // remove — re-enable from an empty ring would otherwise miss).
+    if disabled_state_changed {
+        crate::tray::rebuild_tray_menu(&app);
+        crate::events::emit_event(&app, crate::events::event_names::HISTORY_ENTRY_ADDED, ());
     }
 
     #[cfg(target_os = "macos")]

@@ -169,6 +169,12 @@ async function updateHistoryMaxEntries(value: number) {
   await persist();
 }
 
+async function updateHistoryEnabled(enabled: boolean) {
+  if (!settings.value) return;
+  settings.value = { ...settings.value, historyEnabled: enabled };
+  await persist();
+}
+
 async function reload() {
   loading.value = true;
   loadPromise = load();
@@ -204,6 +210,7 @@ export function useSettings() {
     updateSelectedModel,
     updateUpdateChannel,
     updateHistoryMaxEntries,
+    updateHistoryEnabled,
     reload,
   };
 }

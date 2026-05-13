@@ -12,9 +12,18 @@ use crate::history::HistoryEntry;
 use crate::output::clipboard::set_clipboard_text;
 use crate::state::{lock_or_recover, AppState};
 
-/// All history entries, newest first.
+/// All history entries, newest first. Returns an empty vec when history
+/// is disabled (or `history_max_entries == 0`) — a defensive backstop so
+/// the UI never surfaces stale entries if a race ever leaves something
+/// on disk after a disable.
 #[tauri::command]
 pub fn get_transcription_history(state: State<'_, Arc<AppState>>) -> Vec<HistoryEntry> {
+    {
+        let s = lock_or_recover(&state.settings);
+        if !s.history_enabled || s.history_max_entries == 0 {
+            return Vec::new();
+        }
+    }
     lock_or_recover(&state.history).all()
 }
 

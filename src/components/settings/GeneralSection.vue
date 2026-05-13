@@ -14,10 +14,15 @@ const {
   openLoginItemsSettings,
   updateAutoStart,
   updateHistoryMaxEntries,
+  updateHistoryEnabled,
 } = useSettings();
 
 function toggleAutoStart(value: boolean) {
   updateAutoStart(value);
+}
+
+function toggleHistoryEnabled(value: boolean) {
+  updateHistoryEnabled(value);
 }
 
 // Bind the number input as a string (BaseInput uses defineModel<string>()),
@@ -82,20 +87,32 @@ function onHistoryMaxChange() {
     </BaseButton>
 
     <SettingsRow
-      label="Transcript history size"
-      :helper="`Older dictations are dropped when you exceed this number (${HISTORY_MIN_ENTRIES}–${HISTORY_MAX_ENTRIES}).`"
+      label="Save transcript history"
+      helper="When off, dictations are not stored on disk. Turning this off clears any existing transcripts."
     >
-      <BaseInput
-        v-model="historyMaxEntriesInput"
-        type="number"
-        size="sm"
-        class="w-20 text-right"
-        :min="HISTORY_MIN_ENTRIES"
-        :max="HISTORY_MAX_ENTRIES"
-        step="10"
-        @input="onHistoryMaxChange"
-        @change="onHistoryMaxChange"
+      <BaseToggle
+        :model-value="settings?.historyEnabled ?? true"
+        @update:model-value="toggleHistoryEnabled"
       />
     </SettingsRow>
+
+    <div :class="{ 'opacity-50 pointer-events-none': !(settings?.historyEnabled ?? true) }">
+      <SettingsRow
+        label="Transcript history size"
+        :helper="`Older dictations are dropped when you exceed this number (${HISTORY_MIN_ENTRIES}–${HISTORY_MAX_ENTRIES}).`"
+      >
+        <BaseInput
+          v-model="historyMaxEntriesInput"
+          type="number"
+          size="sm"
+          class="w-20 text-right"
+          :min="HISTORY_MIN_ENTRIES"
+          :max="HISTORY_MAX_ENTRIES"
+          step="10"
+          @input="onHistoryMaxChange"
+          @change="onHistoryMaxChange"
+        />
+      </SettingsRow>
+    </div>
   </SettingsSection>
 </template>

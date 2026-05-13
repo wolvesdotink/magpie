@@ -74,6 +74,11 @@ export interface UserSettings {
   /** Maximum number of dictation transcripts retained in the on-disk
    *  history ring. Clamped server-side to [10, 500]. Default 50. */
   historyMaxEntries: number;
+  /** Whether transcripts are written to the on-disk history at all. When
+   *  false, new dictations skip the write, the History panel shows a
+   *  "disabled" message, and the tray's History… item is hidden. Default
+   *  true. A `historyMaxEntries` of 0 is also treated as disabled. */
+  historyEnabled: boolean;
 }
 
 // Mirror the Rust constants in `crate::history`. Keep these in sync if you

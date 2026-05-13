@@ -9,6 +9,7 @@ import {
   type HistoryEntry,
 } from '@/lib/commands';
 import { onHistoryEntryAdded } from '@/lib/events';
+import { useSettings } from '@/composables/useSettings';
 import BaseInput from '@/components/base/BaseInput.vue';
 
 const appWindow = getCurrentWindow();
@@ -16,6 +17,16 @@ const entries = ref<HistoryEntry[]>([]);
 const searchQuery = ref('');
 const copiedId = ref<number | null>(null);
 const unlisteners: UnlistenFn[] = [];
+
+// History window is a separate webview from Settings, so its `useSettings`
+// is a different singleton. `reload()` re-fetches so toggling the setting
+// over there propagates here on the next HISTORY_ENTRY_ADDED event.
+const { settings, reload: reloadSettings } = useSettings();
+const historyDisabled = computed(
+  () =>
+    settings.value !== null &&
+    (!settings.value.historyEnabled || (settings.value.historyMaxEntries ?? 0) === 0),
+);
 
 const filteredEntries = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
@@ -25,7 +36,10 @@ const filteredEntries = computed(() => {
 
 async function refresh() {
   try {
-    entries.value = await getTranscriptionHistory();
+    // Reload settings alongside entries so a toggle flip in the Settings
+    // window flows through here on the next HISTORY_ENTRY_ADDED event.
+    const [, fetched] = await Promise.all([reloadSettings(), getTranscriptionHistory()]);
+    entries.value = fetched;
   } catch (e) {
     console.error('Failed to load history:', e);
   }
@@ -80,12 +94,19 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col flex-1 min-h-0">
-    <div class="px-5 pb-3">
+    <div v-if="!historyDisabled" class="px-5 pb-3">
       <BaseInput v-model="searchQuery" type="search" placeholder="Search transcripts..." />
     </div>
 
     <div class="flex-1 overflow-y-auto min-h-0 px-5">
-      <div v-if="entries.length === 0" class="text-center text-ink-faint text-[11px] py-12">
+      <div v-if="historyDisabled" class="text-center text-ink-faint text-[11px] py-12 px-4">
+        <p>History is disabled.</p>
+        <p class="mt-1">Enable it in Settings → General to start saving transcripts.</p>
+      </div>
+      <div
+        v-else-if="entries.length === 0"
+        class="text-center text-ink-faint text-[11px] py-12"
+      >
         No dictations yet — start by holding Fn to record.
       </div>
       <div
@@ -122,7 +143,7 @@ onUnmounted(() => {
     </div>
 
     <div
-      v-if="entries.length > 0"
+      v-if="!historyDisabled && entries.length > 0"
       class="px-5 py-3 border-t border-edge bg-raised/40 flex items-center justify-between"
     >
       <span class="text-[10px] text-ink-faint">

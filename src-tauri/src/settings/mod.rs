@@ -102,6 +102,13 @@ pub struct UserSettings {
     ///  `crate::history::HISTORY_MAX_ENTRIES`] by `update_settings`.
     #[serde(default = "default_history_max_entries")]
     pub history_max_entries: u32,
+    /// Whether transcripts are written to the on-disk history at all.
+    /// When false, `stop_recording` skips the push and the History window
+    /// shows a "disabled" message instead of the list. A `history_max_entries`
+    /// of 0 is also treated as disabled as a defensive backstop for
+    /// hand-edited settings.json files.
+    #[serde(default = "default_true")]
+    pub history_enabled: bool,
 }
 
 impl Default for UserSettings {
@@ -128,6 +135,7 @@ impl Default for UserSettings {
             custom_shortcut: None,
             update_channel: UpdateChannel::Stable,
             history_max_entries: crate::history::HISTORY_DEFAULT_ENTRIES,
+            history_enabled: true,
         }
     }
 }
