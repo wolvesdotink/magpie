@@ -1,11 +1,11 @@
 {
-  "version": "0.1.21-beta.5",
-  "notes": "- Register history window in capabilities and base styles\n- Auto-hide history window on blur and add keyboard shortcuts\n- Fix editor visibility to show only for the active item\n- Add transcription history window with search and re-paste\n- Render update notes as structured blocks with inline formatting\n- Add per-app profiles and reusable styles\n- Show installed version in Updates settings section\n- Always diff release notes against last stable tag\n- Check both channels on beta and pick the newer release\n- Add automated release notes generation to release workflow\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.20...v0.1.21-beta.5",
-  "pub_date": "2026-05-13T15:32:30Z",
+  "version": "0.1.22-beta.1",
+  "notes": "- Add history enabled toggle with clear-on-disable and tray hide\n- Replace manual CoreML repair with auto-retry and acceleration status tra\n- Replace frontmost-app detect with running apps picker in profile editor\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.21...v0.1.22-beta.1",
+  "pub_date": "2026-05-13T20:09:46Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzFaYXM0aVl6TGloU2hlUXNCMmRXUm9xRjBYNlRHb2JzemxrUGsrQ0lyT3pVamhjQ3FUSDFPNUl0bW1ubDAxeTZQVWpVNE5lclhkenM3cHllZWM2WlFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4Njg2Mjg1CWZpbGU6TWFncGllLmFwcC50YXIuZ3oKRlNYRFRXL3pZQlU3S1BDdW91b2RGVUVFNnkvVzJTNVlzbGxTWVQ0Y3I0MXkva0VaRG9YdEp3TXpkQzZoNTloOWRGNndZWXY3NFJrczFqR09pNER1Q2c9PQo=",
-      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.21-beta.5/Magpie.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzRob3VxcHA1MmlIR2NGb3oxY20xVGZoRU95Unc5NXNkUFFid0FlNmZCT3FBMGNRcXp1Mnc0TlVMYS9vWFo3ZU9xQkpHVDdKRXRGTzdwWndVLzIzWVF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NzAyOTIyCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKc0kzMDVtdkRZQkV1VjZSUXJheSsrT0JxMExFY3Z2amlnOFdUVE5EVE54ZXp4WmZJakEwRDFmUTJlbXo5STEyRGR1TEFrb0UyUU05VkNGaFkyRTBHQ0E9PQo=",
+      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.22-beta.1/Magpie.app.tar.gz"
     }
   }
 }
