@@ -1,11 +1,11 @@
 {
-  "version": "0.1.21-beta.1",
-  "notes": "- Always diff release notes against last stable tag\n- Check both channels on beta and pick the newer release\n- Add automated release notes generation to release workflow\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.20...v0.1.21-beta.1",
-  "pub_date": "2026-05-13T10:49:57Z",
+  "version": "0.1.21-beta.2",
+  "notes": "- Add per-app profiles and reusable styles\n- Show installed version in Updates settings section\n- Always diff release notes against last stable tag\n- Check both channels on beta and pick the newer release\n- Add automated release notes generation to release workflow\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.20...v0.1.21-beta.2",
+  "pub_date": "2026-05-13T11:45:17Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzBvdldaTHNCTlJBMk1ydlU5Nml4ZDNQTUFYRm83dS9VZzR3RElrcGJJbDFuS0t1RisvOFJRV2QrSlovVmhwblRZcDNMSWZ3WWRva0Z6YnJyUHhzTHcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NjY5MzQwCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKWnlLNGJPSE9yLzlLMDVZOC9GQ2xMeE9RdExXVmFWNW5wWDBDQldUS1NTQmxRREVmNDFhTXFhdUpTanE3bm1pdzhsb0N1L0NpZk91dWZaTnFrcVBiQnc9PQo=",
-      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.21-beta.1/Magpie.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkyb3h0YWVzcmJjQmswMlJ1RmhTbXo2a1ZSMFA4QmlyUlhjNEd5TVNVcmFTV29IWVN0b2hlaUtLNnFQaGw4UWF3czRMT3VKSHNLNGlzeUN5bkJWSkxhblFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4NjcyNjYzCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKTWhaTlZTRU1QdUlpRlhFK2FFakRaRzhCZG00UXFOTlBnVjM5VWk5ak9PSHMrNjFCeWhFaWo4K1VwQ2pnQkZJaDE0Vy9WbnZmS1M2ckVmM012cmdPQ2c9PQo=",
+      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.21-beta.2/Magpie.app.tar.gz"
     }
   }
 }
