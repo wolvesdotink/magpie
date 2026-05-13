@@ -95,6 +95,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Full history + tags so the "Generate release notes" step
+          # below can `git log <prev-tag>..<this-tag>` and resolve the
+          # previous stable tag for the changelog diff.
+          fetch-depth: 0
 
       - name: Setup Node 20
         uses: actions/setup-node@v5
@@ -194,10 +199,69 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Build a short changelog from commit subjects between the previous
+      # tag and this one. Stable releases diff against the previous *stable*
+      # tag (skipping intermediate -beta.N tags) so users on stable see the
+      # full delta from their last stable; beta releases diff against
+      # whatever immediate predecessor exists so each beta surfaces just
+      # its own changes. We skip `chore: bump version` commits since those
+      # mark the release itself rather than a change in it. The output is
+      # consumed by the Stage step (injected into latest.json) and by the
+      # Publish step (used as the GitHub Release body).
+      - name: Generate release notes
+        id: notes
+        env:
+          PRERELEASE: ${{ steps.tagmeta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##*/}"
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+          else
+            PREV=$(git tag --list 'v*' --sort=-v:refname \
+                    | grep -v -- '-beta\.' \
+                    | grep -v -Fx "$TAG" \
+                    | head -n1 || echo "")
+          fi
+
+          if [[ -z "$PREV" ]]; then
+            BODY="Initial release."
+          else
+            COMMITS=$(git log "${PREV}..${TAG}" \
+                        --no-merges \
+                        --pretty=format:'- %s' \
+                      | grep -v '^- chore: bump version' || true)
+            if [[ -z "$COMMITS" ]]; then
+              BODY="Maintenance release."
+            else
+              COMPARE="https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
+              BODY=$(printf '%s\n\n**Full changelog:** %s' "$COMMITS" "$COMPARE")
+            fi
+          fi
+
+          # GITHUB_OUTPUT's heredoc form is the only safe way to pass
+          # newline-containing values to later steps.
+          {
+            echo "body<<NOTES_EOF"
+            echo "$BODY"
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "----- generated notes -----"
+          echo "$BODY"
+          echo "---------------------------"
+
       # Stage every release asset under dist-release/ so the publish step has
       # one place to look. Also generates latest.json (the updater manifest).
       - name: Stage release assets
         id: stage
+        env:
+          # Piping the notes via env (rather than inlining the expression in
+          # the run script) keeps bash from re-parsing commit-message content
+          # — a stray single quote in a future subject would otherwise break
+          # the shell string.
+          NOTES: ${{ steps.notes.outputs.body }}
         run: |
           set -euo pipefail
           BUNDLE=src-tauri/target/release/bundle
@@ -228,16 +292,24 @@ jobs:
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           UPDATER_URL="https://github.com/${REPO}/releases/download/v${VERSION}/Magpie.app.tar.gz"
 
-          cat > dist-release/latest.json <<EOF
-          {
-            "version": "${VERSION}",
-            "notes": "See the release page for details.",
-            "pub_date": "${PUB_DATE}",
-            "platforms": {
-              "darwin-aarch64": { "signature": "${SIG}", "url": "${UPDATER_URL}" }
-            }
-          }
-          EOF
+          # jq (preinstalled on macos-latest) handles JSON escaping for the
+          # multi-line `notes` value so newlines, quotes, and backslashes
+          # from commit messages can't break the manifest. NOTES is supplied
+          # via the step's `env:` block above.
+          jq -n \
+            --arg version "${VERSION}" \
+            --arg notes "$NOTES" \
+            --arg pub_date "${PUB_DATE}" \
+            --arg sig "${SIG}" \
+            --arg url "${UPDATER_URL}" \
+            '{
+               version: $version,
+               notes: $notes,
+               pub_date: $pub_date,
+               platforms: {
+                 "darwin-aarch64": { signature: $sig, url: $url }
+               }
+             }' > dist-release/latest.json
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "arch=${ARCH_FILENAME}" >> "$GITHUB_OUTPUT"
@@ -259,10 +331,12 @@ jobs:
           prerelease: ${{ steps.tagmeta.outputs.prerelease }}
           fail_on_unmatched_files: true
           body: |
-            Download `Magpie.dmg` below.
+            ${{ steps.notes.outputs.body }}
 
-            **Apple Silicon only.** This build does not support Intel Macs;
-            an x86_64 / universal build is on the roadmap.
+            ---
+
+            Download `Magpie.dmg` below. **Apple Silicon only** — an x86_64
+            / universal build is on the roadmap.
 
             **First launch on a clean Mac:** the app is signed and notarized,
             so it should open without warnings. If macOS still complains
