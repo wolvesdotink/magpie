@@ -16,16 +16,19 @@
 # Next beta in current cycle (must already be on a -beta.N version):
 #   bash scripts/bump.sh beta         # 0.1.18-beta.1 → 0.1.18-beta.2
 #
-# Stripping the -beta.N suffix happens automatically when you bump:
-# `bash scripts/bump.sh patch` from `0.1.18-beta.7` produces `0.1.19`, not
-# `0.1.18`. To release the current beta as stable without bumping the patch,
-# edit the version files by hand.
+# Promote current beta to stable (strips -beta.N, keeps the X.Y.Z):
+#   bash scripts/bump.sh stable       # 0.1.18-beta.7 → 0.1.18
+#
+# Stripping the -beta.N suffix also happens automatically when you bump a
+# level: `bash scripts/bump.sh patch` from `0.1.18-beta.7` produces `0.1.19`,
+# not `0.1.18`. Use `stable` when you want to release the current beta as-is.
 
 set -euo pipefail
 
 usage() {
   echo "Usage: $0 (major|minor|patch) [--beta]"
   echo "       $0 beta"
+  echo "       $0 stable"
   exit 1
 }
 
@@ -34,7 +37,7 @@ BETA_FLAG=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    major|minor|patch|beta)
+    major|minor|patch|beta|stable)
       if [[ -n "$BUMP_TYPE" ]]; then usage; fi
       BUMP_TYPE="$1"
       shift
@@ -51,12 +54,17 @@ done
 
 if [[ -z "$BUMP_TYPE" ]]; then usage; fi
 
-# The `beta` subcommand bumps an existing -beta.N counter; `--beta` is a flag
-# for major/minor/patch that appends -beta.1 after the level bump. They are
-# mutually exclusive — combining them would just be confusing.
+# The `beta` subcommand bumps an existing -beta.N counter; `stable` strips
+# it; `--beta` is a flag for major/minor/patch that appends -beta.1 after
+# the level bump. None of them compose — combining would just be confusing.
 if [[ "$BUMP_TYPE" == "beta" && "$BETA_FLAG" == "true" ]]; then
   echo "Error: the 'beta' subcommand does not accept --beta."
   echo "Use 'beta' alone to advance the counter, or '<level> --beta' to start a new beta cycle."
+  exit 1
+fi
+if [[ "$BUMP_TYPE" == "stable" && "$BETA_FLAG" == "true" ]]; then
+  echo "Error: the 'stable' subcommand does not accept --beta."
+  echo "Use 'stable' alone to promote the current beta, or '<level> --beta' to start a new beta cycle."
   exit 1
 fi
 
@@ -98,6 +106,13 @@ case "$BUMP_TYPE" in
     fi
     NEW_BETA=$((BETA_N + 1))
     NEW="$BASE-beta.$NEW_BETA"
+    ;;
+  stable)
+    if [[ -z "$BETA_N" ]]; then
+      echo "Error: current version $CURRENT is not a beta — nothing to promote."
+      exit 1
+    fi
+    NEW="$BASE"
     ;;
 esac
 

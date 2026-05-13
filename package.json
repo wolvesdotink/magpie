@@ -24,6 +24,7 @@
     "bump:minor:beta": "bash scripts/bump.sh minor --beta",
     "bump:major:beta": "bash scripts/bump.sh major --beta",
     "bump:beta": "bash scripts/bump.sh beta",
+    "bump:stable": "bash scripts/bump.sh stable",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
