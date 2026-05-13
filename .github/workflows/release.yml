@@ -292,35 +292,41 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --draft=false
 
-      # Beta channel: roll the manifest at the fixed tag `beta-channel` so
-      # the in-app updater (when set to the beta channel) has a stable URL
-      # to poll. GitHub's `/releases/latest/download/...` URL deliberately
-      # skips prereleases, which is why we need this dedicated rolling
-      # release instead of relying on the `latest` alias.
+      # Beta channel: publish the manifest to a dedicated `manifests` branch
+      # served via raw.githubusercontent.com. Under Immutable Releases we cannot
+      # reuse a `beta-channel` release (draft asset URLs use random
+      # `untagged-<hash>/` paths; published releases would freeze on first
+      # publish), so the rolling pointer has to live outside GitHub Releases.
       #
-      # The manifest's `url` field already points at the versioned tag's
-      # signed asset (Magpie.app.tar.gz at v<version>), so no DMG or
-      # tarball needs to be copied here — only the JSON pointer.
+      # The Rust updater (BETA_ENDPOINT) fetches:
+      #   https://raw.githubusercontent.com/<repo>/manifests/beta.json
       #
-      # Kept as a perpetual DRAFT release. Under GitHub's Immutable Releases,
-      # publishing `beta-channel` would freeze it on first publish and block
-      # every subsequent `--clobber` of `latest.json`. Drafts stay mutable,
-      # and the `/releases/download/beta-channel/latest.json` asset URL still
-      # resolves for draft releases (only the release page is hidden — the
-      # updater fetches the asset URL directly).
-      - name: Update rolling beta-channel manifest
-        if: steps.tagmeta.outputs.prerelease == 'true'
+      # workflow_dispatch runs intentionally skip this push so a human can
+      # review the draft release before the beta channel switches over.
+      - name: Publish beta manifest to manifests branch
+        if: steps.tagmeta.outputs.prerelease == 'true' && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if ! gh release view beta-channel --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create beta-channel \
-              --repo "$GITHUB_REPOSITORY" \
-              --draft \
-              --prerelease \
-              --title "Beta channel manifest" \
-              --notes "Rolling pointer to the latest beta release. Do not download from this release directly; install the latest beta from the versioned tag instead."
+          WORK=$(mktemp -d)
+          git clone --quiet --depth 1 --branch manifests \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "$WORK" 2>/dev/null || {
+              # Branch doesn't exist yet — bootstrap as orphan.
+              git clone --quiet --depth 1 \
+                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+                "$WORK"
+              git -C "$WORK" switch --orphan manifests
+              git -C "$WORK" rm -rf . >/dev/null 2>&1 || true
+            }
+          cp dist-release/latest.json "$WORK/beta.json"
+          git -C "$WORK" config user.name  "github-actions[bot]"
+          git -C "$WORK" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$WORK" add beta.json
+          if git -C "$WORK" diff --cached --quiet; then
+            echo "beta.json unchanged; nothing to push"
+          else
+            git -C "$WORK" commit -m "release: beta manifest for v${{ steps.stage.outputs.version }}"
+            git -C "$WORK" push origin manifests
           fi
-          gh release upload beta-channel dist-release/latest.json \
-            --repo "$GITHUB_REPOSITORY" --clobber

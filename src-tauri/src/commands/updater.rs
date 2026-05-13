@@ -32,7 +32,7 @@ use crate::state::{lock_or_recover, AppState};
 const STABLE_ENDPOINT: &str =
     "https://github.com/wolvesdotink/magpie/releases/latest/download/latest.json";
 const BETA_ENDPOINT: &str =
-    "https://github.com/wolvesdotink/magpie/releases/download/beta-channel/latest.json";
+    "https://raw.githubusercontent.com/wolvesdotink/magpie/manifests/beta.json";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
