@@ -24,6 +24,18 @@ use llama_cpp_2::model::Special;
 /// Maximum length of a user-supplied custom correction prompt.
 pub const CUSTOM_PROMPT_MAX_CHARS: usize = 2048;
 
+/// Maximum total length of the user's writing samples block (sum of all
+/// samples joined with separators). Sized so the augmented system prompt
+/// still fits under [`CUSTOM_PROMPT_MAX_CHARS`].
+pub const WRITING_SAMPLES_MAX_CHARS: usize = 1200;
+
+const VOICE_REFERENCE_HEADER: &str = "\n\n\
+VOICE REFERENCE:\n\
+The user wrote the samples below. When the cleanup rules above leave a choice between equivalent phrasings (contractions, word selection, punctuation register), prefer the option that matches this voice. Do NOT introduce words, phrases, or content from the samples that aren't already in the input. Do NOT rewrite the input to sound like the samples \u{2014} these are a tiebreaker for ambiguous choices only.\n\n\
+Samples:\n---\n";
+
+const VOICE_REFERENCE_FOOTER: &str = "\n---";
+
 pub const SYSTEM_PROMPT: &str = "\
 You are a dictation cleanup assistant. Your ONLY job is to remove self-corrections from dictated text.
 
@@ -62,6 +74,76 @@ Output ONLY the cleaned text. No explanations.";
 
 const USER_PROMPT_PREFIX: &str = "Clean up self-corrections in this dictated text:\n\n";
 
+/// Compose a base system prompt with the user's writing samples as a "voice
+/// reference" block. Pure function; no inference. Empty/whitespace-only
+/// samples are dropped; if nothing remains the base prompt is returned
+/// unchanged. The samples block is truncated at [`WRITING_SAMPLES_MAX_CHARS`]
+/// (cut at a UTF-8 char boundary and suffixed with `…`), and if the final
+/// string would still exceed [`CUSTOM_PROMPT_MAX_CHARS`] the samples block is
+/// trimmed further to fit. If it can't fit at all the base is returned
+/// unchanged.
+pub fn augment_prompt_with_voice(base: &str, samples: &[String]) -> String {
+    let cleaned: Vec<&str> = samples
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if cleaned.is_empty() {
+        return base.to_string();
+    }
+
+    let joined = cleaned.join("\n---\n");
+    let samples_block = truncate_at_char_boundary(&joined, WRITING_SAMPLES_MAX_CHARS);
+
+    let overhead = base.len() + VOICE_REFERENCE_HEADER.len() + VOICE_REFERENCE_FOOTER.len();
+    if overhead >= CUSTOM_PROMPT_MAX_CHARS {
+        log::warn!(
+            "Base correction prompt + voice-reference framing already exceeds {} chars; \
+             skipping voice augmentation.",
+            CUSTOM_PROMPT_MAX_CHARS
+        );
+        return base.to_string();
+    }
+    let remaining = CUSTOM_PROMPT_MAX_CHARS - overhead;
+    let samples_block = truncate_at_char_boundary(&samples_block, remaining);
+
+    let mut out = String::with_capacity(
+        base.len()
+            + VOICE_REFERENCE_HEADER.len()
+            + samples_block.len()
+            + VOICE_REFERENCE_FOOTER.len(),
+    );
+    out.push_str(base);
+    out.push_str(VOICE_REFERENCE_HEADER);
+    out.push_str(&samples_block);
+    out.push_str(VOICE_REFERENCE_FOOTER);
+    out
+}
+
+/// Truncate `s` to at most `max_chars` chars, appending `…` if any content was
+/// dropped. Cuts at a UTF-8 char boundary so we never split a multi-byte char.
+/// Returns the input unchanged when it already fits.
+fn truncate_at_char_boundary(s: &str, max_chars: usize) -> String {
+    if s.len() <= max_chars {
+        return s.to_string();
+    }
+    // The ellipsis is a single 3-byte UTF-8 char; reserve room for it.
+    let ellipsis = "\u{2026}";
+    if max_chars <= ellipsis.len() {
+        // Not enough room for even the ellipsis; just return an empty slice.
+        return String::new();
+    }
+    let budget = max_chars - ellipsis.len();
+    let mut end = budget;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut out = String::with_capacity(end + ellipsis.len());
+    out.push_str(&s[..end]);
+    out.push_str(ellipsis);
+    out
+}
+
 /// Load a correction model from a GGUF file on disk.
 pub fn load_correction_model(backend: &LlamaBackend, path: &Path) -> Result<LlamaModel> {
     let start = std::time::Instant::now();
@@ -81,19 +163,12 @@ pub fn load_correction_model(backend: &LlamaBackend, path: &Path) -> Result<Llam
     Ok(model)
 }
 
-/// Run the correction model on transcribed text, with the default system prompt.
-pub fn correct_transcription(
-    backend: &LlamaBackend,
-    model: &LlamaModel,
-    text: &str,
-) -> Result<String> {
-    correct_transcription_with_prompt(backend, model, text, SYSTEM_PROMPT)
-}
-
-/// Run the correction model with an explicit system prompt (built-in casual /
-/// formal / user-defined custom). The prompt is validated to be non-empty and
-/// length-capped; on validation failure we return the original text rather
-/// than risk hallucination from a malformed prompt.
+/// Run the correction model with an explicit system prompt (default cleanup,
+/// built-in casual / formal, or user-defined custom — optionally augmented
+/// with the user's writing samples via [`augment_prompt_with_voice`]). The
+/// prompt is validated to be non-empty and length-capped; on validation
+/// failure we return the original text rather than risk hallucination from a
+/// malformed prompt.
 pub fn correct_transcription_with_prompt(
     backend: &LlamaBackend,
     model: &LlamaModel,
@@ -275,5 +350,76 @@ mod tests {
             "Send it to John. Send it to Jane.",
             "Send it to Jane."
         ));
+    }
+
+    #[test]
+    fn augment_with_empty_samples_returns_base_unchanged() {
+        let base = "be brief";
+        assert_eq!(augment_prompt_with_voice(base, &[]), base);
+    }
+
+    #[test]
+    fn augment_drops_whitespace_only_samples() {
+        let base = "be brief";
+        let samples = vec!["   ".to_string(), "\n\t".to_string()];
+        assert_eq!(augment_prompt_with_voice(base, &samples), base);
+    }
+
+    #[test]
+    fn augment_appends_framing_and_samples() {
+        let base = "be brief";
+        let samples = vec!["I write like this.".to_string()];
+        let out = augment_prompt_with_voice(base, &samples);
+        assert!(out.starts_with(base));
+        assert!(out.contains("VOICE REFERENCE"));
+        assert!(out.contains("I write like this."));
+        assert!(out.len() <= CUSTOM_PROMPT_MAX_CHARS);
+    }
+
+    #[test]
+    fn augment_truncates_oversized_samples() {
+        let base = "be brief";
+        let huge = "a".repeat(WRITING_SAMPLES_MAX_CHARS * 4);
+        let samples = vec![huge];
+        let out = augment_prompt_with_voice(base, &samples);
+        assert!(out.starts_with(base));
+        assert!(out.len() <= CUSTOM_PROMPT_MAX_CHARS);
+        // Truncation marker is present somewhere in the samples block.
+        assert!(out.contains('\u{2026}'));
+    }
+
+    #[test]
+    fn augment_returns_base_when_base_already_too_long() {
+        let base = "x".repeat(CUSTOM_PROMPT_MAX_CHARS);
+        let samples = vec!["sample".to_string()];
+        let out = augment_prompt_with_voice(&base, &samples);
+        assert_eq!(out, base, "no room to append voice block; keep base as-is");
+    }
+
+    #[test]
+    fn augment_handles_multibyte_truncation() {
+        // Each `é` is 2 bytes in UTF-8; with thousands of them the truncation
+        // logic must cut on a char boundary.
+        let base = "be brief";
+        let big = "é".repeat(WRITING_SAMPLES_MAX_CHARS);
+        let out = augment_prompt_with_voice(base, &[big]);
+        assert!(
+            out.is_char_boundary(out.len()),
+            "result must end on a UTF-8 boundary"
+        );
+        assert!(out.len() <= CUSTOM_PROMPT_MAX_CHARS);
+    }
+
+    #[test]
+    fn augment_joins_multiple_samples_with_separator() {
+        let base = "be brief";
+        let samples = vec![
+            "first paragraph".to_string(),
+            "second paragraph".to_string(),
+        ];
+        let out = augment_prompt_with_voice(base, &samples);
+        assert!(out.contains("first paragraph"));
+        assert!(out.contains("second paragraph"));
+        assert!(out.contains("\n---\n"));
     }
 }

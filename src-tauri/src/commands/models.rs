@@ -259,4 +259,3 @@ fn load_model_internal(
 
     Ok(())
 }
-

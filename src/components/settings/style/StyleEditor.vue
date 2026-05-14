@@ -9,7 +9,7 @@ import FormattingRulesEditor from './FormattingRulesEditor.vue';
 import CustomRulesEditor from './CustomRulesEditor.vue';
 import { useStyles } from '@/composables/useStyles';
 import { useProfiles } from '@/composables/useProfiles';
-import type { Style, CorrectionOverride } from '@/lib/commands';
+import { WRITING_SAMPLES_MAX_CHARS, type Style, type CorrectionOverride } from '@/lib/commands';
 
 const props = defineProps<{
   style: Style;
@@ -72,6 +72,30 @@ function setCustomPrompt(v: string) {
   }
 }
 
+// Writing samples — keep a separate ref bound to the raw textarea so
+// mid-typing edits (e.g. an in-progress third blank line) don't get collapsed
+// by the split→join round-trip. The watcher commits to `draft.writingSamples`
+// on every change.
+const writingSamplesText = ref<string>((props.style.writingSamples ?? []).join('\n\n'));
+
+watch(
+  () => props.style.id,
+  () => {
+    writingSamplesText.value = (props.style.writingSamples ?? []).join('\n\n');
+  },
+);
+
+watch(writingSamplesText, (next) => {
+  const parts = next
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  draft.value.writingSamples = parts;
+});
+
+const writingSamplesCount = computed(() => writingSamplesText.value.length);
+const writingSamplesTooLong = computed(() => writingSamplesCount.value > WRITING_SAMPLES_MAX_CHARS);
+
 const CORRECTION_OPTIONS: { value: CorrectionOverride['kind']; label: string; helper: string }[] = [
   {
     value: 'inherit',
@@ -133,6 +157,7 @@ const tooLong = computed(() => customPromptCount.value > MAX_CUSTOM_PROMPT);
 const saveDisabled = computed(() => {
   if (draft.value.name.trim().length === 0) return true;
   if (tooLong.value) return true;
+  if (writingSamplesTooLong.value) return true;
   if (draft.value.correction.kind === 'custom' && draft.value.correction.prompt.trim().length === 0)
     return true;
   return false;
@@ -214,6 +239,33 @@ function handleSave() {
             </div>
           </BaseCard>
         </div>
+      </div>
+
+      <div>
+        <div class="text-[10px] font-semibold text-ink-faint tracking-[0.02em] mb-1.5">
+          Writing samples
+        </div>
+        <BaseCard tone="dashed">
+          <div class="flex flex-col gap-1">
+            <textarea
+              v-model="writingSamplesText"
+              rows="6"
+              placeholder="Paste 1–3 paragraphs you've written. Separate them with a blank line."
+              class="w-full min-w-0 rounded-md bg-raised border border-edge text-ink text-[11px] px-2 py-1.5 placeholder:text-ink-faint/50 focus:outline-none focus:border-gold/40 focus:shadow-[0_0_0_3px_rgba(232,175,71,0.08)] resize-y"
+            />
+            <div class="flex items-center justify-between text-[9px]">
+              <span class="text-ink-faint">
+                Stored locally in this style — never sent to a server. Used as a voice reference
+                during cleanup. Most effective with Casual, Formal, or Custom correction modes; the
+                default Inherit prompt is strict enough that samples have little effect. Preview
+                below reflects formatting only.
+              </span>
+              <span :class="writingSamplesTooLong ? 'text-flame font-semibold' : 'text-ink-faint'">
+                {{ writingSamplesCount }} / {{ WRITING_SAMPLES_MAX_CHARS }}
+              </span>
+            </div>
+          </div>
+        </BaseCard>
       </div>
 
       <SettingsRow

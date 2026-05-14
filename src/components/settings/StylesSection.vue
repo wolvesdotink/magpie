@@ -64,6 +64,7 @@ async function handleNewStyle() {
       correction: { kind: 'inherit' },
       customRules: [],
       fillerOverride: null,
+      writingSamples: [],
       createdAt: '',
       updatedAt: '',
     };

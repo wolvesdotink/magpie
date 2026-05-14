@@ -161,9 +161,16 @@ export interface Style {
   correction: CorrectionOverride;
   customRules: TextTransform[];
   fillerOverride: boolean | null;
+  /** User-pasted paragraphs applied as a voice reference to the correction
+   *  prompt. Stored locally in styles.json. */
+  writingSamples: string[];
   createdAt: string;
   updatedAt: string;
 }
+
+/** Mirror of `correction::engine::WRITING_SAMPLES_MAX_CHARS` in Rust. Keep in
+ *  sync; the StyleEditor uses this for the char-budget counter. */
+export const WRITING_SAMPLES_MAX_CHARS = 1200;
 
 export interface AppProfile {
   id: string;

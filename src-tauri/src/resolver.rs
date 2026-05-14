@@ -34,6 +34,10 @@ pub struct EffectiveResolution {
     pub correction: CorrectionOverride,
     pub remove_fillers: bool,
     pub vocab_learning_enabled: bool,
+    /// User-authored writing samples carried from the matched Style for use
+    /// as a voice reference in the correction prompt. Empty when the Style
+    /// has no samples set (or all were whitespace).
+    pub writing_samples: Vec<String>,
     /// Whether learned vocabulary should attribute to a profile, and which
     /// one. `None` means attribute to global vocabulary. Reserved for future
     /// auto-learning routing logic that lives outside the resolver.
@@ -126,6 +130,13 @@ pub fn resolve(
         .and_then(|p| p.vocabulary_learning_override)
         .unwrap_or(vocab_learning_global);
 
+    let writing_samples: Vec<String> = style
+        .writing_samples
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
     let learning_target_profile_id = profile.as_ref().map(|p| p.id.clone());
     let matched_profile_id = profile.as_ref().map(|p| p.id.clone());
     let matched_style_id = Some(style.id.clone());
@@ -138,6 +149,7 @@ pub fn resolve(
         correction: style.correction,
         remove_fillers,
         vocab_learning_enabled,
+        writing_samples,
         learning_target_profile_id,
         matched_profile_id,
         matched_style_id,
@@ -305,6 +317,37 @@ mod tests {
             .find(|(w, _)| w.eq_ignore_ascii_case("api"))
             .unwrap();
         assert_eq!(pair.1, "API");
+    }
+
+    #[test]
+    fn writing_samples_are_carried_from_style() {
+        let app = FrontmostApp {
+            bundle_id: "com.tinyspeck.slackmacgap".into(),
+            name: "Slack".into(),
+        };
+        let current_app = Mutex::new(Some(app));
+
+        let mut styles_store = StylesStore::seeded();
+        let casual = styles_store
+            .styles
+            .iter_mut()
+            .find(|s| s.id == style_presets::BUILTIN_CASUAL_ID)
+            .unwrap();
+        casual.writing_samples = vec![
+            "I keep it casual.".into(),
+            "  ".into(), // whitespace-only, should be dropped
+            "Short and direct.".into(),
+        ];
+        let styles = Mutex::new(styles_store);
+
+        let profiles = Mutex::new(ProfilesStore::seeded());
+        let vocabulary = Mutex::new(Vocabulary::default());
+        let settings = Mutex::new(UserSettings::default());
+
+        let r = resolve(&current_app, &profiles, &styles, &vocabulary, &settings).unwrap();
+        assert_eq!(r.writing_samples.len(), 2);
+        assert_eq!(r.writing_samples[0], "I keep it casual.");
+        assert_eq!(r.writing_samples[1], "Short and direct.");
     }
 
     #[test]

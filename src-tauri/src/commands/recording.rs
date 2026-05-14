@@ -288,6 +288,7 @@ pub async fn stop_recording(
         let correction_override = effective.correction;
         let resolved_remove_fillers = effective.remove_fillers;
         let vocab_learning_enabled = effective.vocab_learning_enabled;
+        let writing_samples = effective.writing_samples;
 
         let prompt_ref = if initial_prompt.is_empty() {
             None
@@ -371,16 +372,30 @@ pub async fn stop_recording(
                             if let (Some(ref backend), Some(ref model)) =
                                 (&*backend_guard, &*model_guard)
                             {
-                                let result = match custom_prompt {
-                                    Some(p) => {
-                                        correction::engine::correct_transcription_with_prompt(
-                                            backend, model, &text, p,
-                                        )
-                                    }
-                                    None => correction::engine::correct_transcription(
-                                        backend, model, &text,
-                                    ),
+                                // Compose the final system prompt. If the style
+                                // carries writing samples, augment whichever
+                                // base prompt was selected (Inherit → default,
+                                // Casual/Formal/Custom → that one).
+                                let base_prompt: &str = match custom_prompt {
+                                    Some(p) => p,
+                                    None => correction::engine::SYSTEM_PROMPT,
                                 };
+                                let augmented;
+                                let final_prompt: &str = if writing_samples.is_empty() {
+                                    base_prompt
+                                } else {
+                                    augmented = correction::engine::augment_prompt_with_voice(
+                                        base_prompt,
+                                        &writing_samples,
+                                    );
+                                    augmented.as_str()
+                                };
+                                let result = correction::engine::correct_transcription_with_prompt(
+                                    backend,
+                                    model,
+                                    &text,
+                                    final_prompt,
+                                );
                                 match result {
                                     Ok(corrected) if !corrected.is_empty() => {
                                         log::info!(

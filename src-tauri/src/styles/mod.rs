@@ -171,6 +171,10 @@ pub struct Style {
     pub custom_rules: Vec<TextTransform>,
     #[serde(default)]
     pub filler_override: Option<bool>,
+    /// Paragraphs the user has written, applied as a voice reference inside
+    /// the correction prompt. Empty by default.
+    #[serde(default)]
+    pub writing_samples: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -188,6 +192,7 @@ impl Style {
             correction: CorrectionOverride::Inherit,
             custom_rules: Vec::new(),
             filler_override: None,
+            writing_samples: Vec::new(),
             created_at: now.clone(),
             updated_at: now,
         }
@@ -393,6 +398,7 @@ impl StylesStore {
             correction: src.correction,
             custom_rules: src.custom_rules,
             filler_override: src.filler_override,
+            writing_samples: src.writing_samples,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -416,6 +422,7 @@ impl StylesStore {
         existing.correction = default_style.correction;
         existing.custom_rules = default_style.custom_rules;
         existing.filler_override = default_style.filler_override;
+        existing.writing_samples = default_style.writing_samples;
         existing.name = default_style.name;
         existing.description = default_style.description;
         existing.updated_at = Utc::now().to_rfc3339();
