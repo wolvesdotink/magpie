@@ -2843,7 +2843,7 @@ dependencies = [
 
 [[package]]
 name = "magpie"
-version = "0.1.22-beta.1"
+version = "0.1.22"
 dependencies = [
  "anyhow",
  "arboard",
