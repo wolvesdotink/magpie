@@ -36,6 +36,23 @@ Samples:\n---\n";
 
 const VOICE_REFERENCE_FOOTER: &str = "\n---";
 
+/// Default instruction block describing the voice editing commands. Stored
+/// without leading whitespace so it renders cleanly in a settings textarea;
+/// [`augment_prompt_with_commands`] adds the spacing when composing the final
+/// system prompt. Users may override this entirely via
+/// `UserSettings::voice_commands_prompt`.
+pub const VOICE_COMMANDS_INSTRUCTIONS: &str = "VOICE EDITING COMMANDS:\n\
+Recognize and apply spoken editing commands, removing the command phrase from your output:\n\
+- \"scratch that\" / \"ignore that\" / \"delete that\": delete the preceding segment.\n\
+- \"scratch everything\" / \"start over\" / \"let's start clean\": delete everything before the command.\n\
+- \"new line\" / \"newline\": insert a newline.\n\
+- \"new paragraph\" / \"next paragraph\": insert a blank line.\n\
+- \"period new paragraph\": insert a period then a blank line.\n\
+- \"all caps that\" / \"no caps that\": upper/lowercase the preceding segment.\n\
+- \"cap that\" / \"capitalize that\": capitalize the preceding word.\n\
+- \"delete last word\": remove the preceding word.\n\
+Apply only when clearly intended. Idioms (\"scratch that itch\", \"a new line of inquiry\") are NOT commands.";
+
 pub const SYSTEM_PROMPT: &str = "\
 You are a dictation cleanup assistant. Your ONLY job is to remove self-corrections from dictated text.
 
@@ -117,6 +134,43 @@ pub fn augment_prompt_with_voice(base: &str, samples: &[String]) -> String {
     out.push_str(VOICE_REFERENCE_HEADER);
     out.push_str(&samples_block);
     out.push_str(VOICE_REFERENCE_FOOTER);
+    out
+}
+
+/// Append the given voice-commands `instructions` block to `base`, returning
+/// the composed prompt. Pass [`VOICE_COMMANDS_INSTRUCTIONS`] for the built-in
+/// default, or a user override string for a customized one. Mirrors
+/// [`augment_prompt_with_voice`]: pure function, no inference, length-cap
+/// aware.
+///
+/// Empty or whitespace-only `instructions` returns `base` unchanged. If the
+/// composed result would exceed [`CUSTOM_PROMPT_MAX_CHARS`] the base is
+/// returned unchanged and a warning is logged \u{2014} the LLM still does
+/// cleanup, just without command awareness.
+///
+/// Compose with voice augmentation as
+/// `augment_prompt_with_voice(augment_prompt_with_commands(base, instr), samples)`
+/// so the voice-reference block ends up closest to the user input.
+pub fn augment_prompt_with_commands(base: &str, instructions: &str) -> String {
+    let trimmed = instructions.trim();
+    if trimmed.is_empty() {
+        return base.to_string();
+    }
+    // "\n\n" separator between base and the instructions block.
+    let total = base.len() + 2 + trimmed.len();
+    if total > CUSTOM_PROMPT_MAX_CHARS {
+        log::warn!(
+            "Base correction prompt + voice-commands block ({} chars) exceeds {}; \
+             skipping commands augmentation.",
+            total,
+            CUSTOM_PROMPT_MAX_CHARS
+        );
+        return base.to_string();
+    }
+    let mut out = String::with_capacity(total);
+    out.push_str(base);
+    out.push_str("\n\n");
+    out.push_str(trimmed);
     out
 }
 
@@ -421,5 +475,101 @@ mod tests {
         assert!(out.contains("first paragraph"));
         assert!(out.contains("second paragraph"));
         assert!(out.contains("\n---\n"));
+    }
+
+    #[test]
+    fn augment_with_commands_appends_default_block() {
+        let base = "be brief";
+        let out = augment_prompt_with_commands(base, VOICE_COMMANDS_INSTRUCTIONS);
+        assert!(out.starts_with(base), "base must be preserved at the start");
+        assert!(out.contains("VOICE EDITING COMMANDS"));
+        assert!(out.contains("scratch that"));
+        assert!(out.contains("new line"));
+        assert!(out.contains("all caps that"));
+        assert!(out.contains("scratch that itch"), "false-positive guard text");
+        assert!(out.len() <= CUSTOM_PROMPT_MAX_CHARS);
+    }
+
+    #[test]
+    fn augment_with_commands_respects_cap() {
+        let base = "x".repeat(CUSTOM_PROMPT_MAX_CHARS - 10);
+        let out = augment_prompt_with_commands(&base, VOICE_COMMANDS_INSTRUCTIONS);
+        assert_eq!(
+            out, base,
+            "no room to append commands block; keep base unchanged"
+        );
+    }
+
+    #[test]
+    fn augment_voice_then_commands_order_is_stable() {
+        let base = "be brief";
+        let samples = vec!["I write like this.".to_string()];
+        let out = augment_prompt_with_voice(
+            &augment_prompt_with_commands(base, VOICE_COMMANDS_INSTRUCTIONS),
+            &samples,
+        );
+        let cmd_pos = out.find("VOICE EDITING COMMANDS").expect("commands block present");
+        let voice_pos = out.find("VOICE REFERENCE").expect("voice block present");
+        assert!(
+            cmd_pos < voice_pos,
+            "commands must precede voice reference so user input sees voice samples last"
+        );
+        assert!(out.starts_with(base));
+        assert!(out.len() <= CUSTOM_PROMPT_MAX_CHARS);
+    }
+
+    #[test]
+    fn augment_with_commands_fits_alongside_casual_prompt_and_voice_block() {
+        let samples = vec!["a".repeat(WRITING_SAMPLES_MAX_CHARS / 2)];
+        let out = augment_prompt_with_voice(
+            &augment_prompt_with_commands(CASUAL_SYSTEM_PROMPT, VOICE_COMMANDS_INSTRUCTIONS),
+            &samples,
+        );
+        assert!(out.contains("VOICE EDITING COMMANDS"));
+        assert!(out.contains("VOICE REFERENCE"));
+        assert!(out.len() <= CUSTOM_PROMPT_MAX_CHARS);
+    }
+
+    #[test]
+    fn augment_with_commands_uses_custom_instructions() {
+        let base = "be brief";
+        let custom = "MY OWN COMMANDS:\n- foo: do bar.";
+        let out = augment_prompt_with_commands(base, custom);
+        assert!(out.starts_with(base));
+        assert!(out.contains("MY OWN COMMANDS"));
+        assert!(out.contains("foo: do bar"));
+        assert!(
+            !out.contains("VOICE EDITING COMMANDS"),
+            "custom instructions must replace, not augment, the default"
+        );
+    }
+
+    #[test]
+    fn augment_with_commands_empty_instructions_returns_base() {
+        let base = "be brief";
+        assert_eq!(augment_prompt_with_commands(base, ""), base);
+        assert_eq!(augment_prompt_with_commands(base, "   \n\t  "), base);
+    }
+
+    #[test]
+    fn augment_with_commands_default_const_has_no_leading_whitespace() {
+        // The augment function adds the "\n\n" separator; the constant must
+        // start with the actual instruction text so it renders cleanly in the
+        // settings textarea.
+        assert_eq!(
+            VOICE_COMMANDS_INSTRUCTIONS,
+            VOICE_COMMANDS_INSTRUCTIONS.trim_start()
+        );
+    }
+
+    #[test]
+    fn validate_correction_accepts_aggressive_scratch_everything() {
+        // Regression: when the user says "scratch everything ... how is the
+        // weather?" the LLM correctly returns just the surviving question. The
+        // word-overlap and length checks must not reject this transformation.
+        assert!(validate_correction(
+            "scratch everything. lets start clean. how is the weather today?",
+            "How is the weather today?"
+        ));
     }
 }

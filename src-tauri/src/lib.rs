@@ -181,6 +181,7 @@ pub fn run() {
             commands::clear_vocabulary,
             commands::get_launch_at_login_status,
             commands::open_login_items_settings,
+            commands::get_default_voice_commands_prompt,
             // Styles + Profiles + Frontmost App + Running Apps (per-app profiles feature)
             commands::get_styles,
             commands::add_style,

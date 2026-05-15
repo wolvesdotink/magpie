@@ -24,7 +24,7 @@ use serde_json::Value;
 use super::error::{Result, SettingsError};
 
 /// The shape version this build writes to disk and expects on load.
-pub const CURRENT_VERSION: u32 = 3;
+pub const CURRENT_VERSION: u32 = 4;
 
 /// A single forward migration step. Index `i` in [`migrations`] migrates
 /// **from v`i` to v`i+1`**, so a v0 file applies migrations 0, 1, …,
@@ -47,6 +47,12 @@ pub fn migrations() -> Vec<Migration> {
         // pattern as v1→v2: `#[serde(default)]` fills in the missing
         // value, so this step is bookkeeping only.
         migrate_v2_to_v3,
+        // v3 → v4: introduce `voiceCommandsEnabled` (default false) and
+        // `voiceCommandsPrompt` (default None — falls back to the built-in
+        // VOICE_COMMANDS_INSTRUCTIONS). Same bookkeeping-only pattern:
+        // `#[serde(default)]` fills in the missing fields, so the migration
+        // is a no-op.
+        migrate_v3_to_v4,
     ]
 }
 
@@ -64,6 +70,12 @@ fn migrate_v1_to_v2(_value: &mut Value) -> Result<()> {
 fn migrate_v2_to_v3(_value: &mut Value) -> Result<()> {
     // `historyMaxEntries` is added in v3 with `#[serde(default)]`, so a
     // missing field deserializes to the default. No payload rewrite needed.
+    Ok(())
+}
+
+fn migrate_v3_to_v4(_value: &mut Value) -> Result<()> {
+    // `voiceCommandsEnabled` is added in v4 with `#[serde(default)]`, so a
+    // missing field deserializes to `false`. No payload rewrite needed.
     Ok(())
 }
 

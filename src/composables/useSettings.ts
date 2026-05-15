@@ -175,6 +175,18 @@ async function updateHistoryEnabled(enabled: boolean) {
   await persist();
 }
 
+async function updateVoiceCommandsEnabled(enabled: boolean) {
+  if (!settings.value) return;
+  settings.value = { ...settings.value, voiceCommandsEnabled: enabled };
+  await persist();
+}
+
+async function updateVoiceCommandsPrompt(prompt: string | null) {
+  if (!settings.value) return;
+  settings.value = { ...settings.value, voiceCommandsPrompt: prompt };
+  await persist();
+}
+
 async function reload() {
   loading.value = true;
   loadPromise = load();
@@ -211,6 +223,8 @@ export function useSettings() {
     updateUpdateChannel,
     updateHistoryMaxEntries,
     updateHistoryEnabled,
+    updateVoiceCommandsEnabled,
+    updateVoiceCommandsPrompt,
     reload,
   };
 }

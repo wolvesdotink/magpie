@@ -79,6 +79,15 @@ export interface UserSettings {
    *  "disabled" message, and the tray's History… item is hidden. Default
    *  true. A `historyMaxEntries` of 0 is also treated as disabled. */
   historyEnabled: boolean;
+  /** Whether the LLM correction stage is also asked to interpret spoken
+   *  editing commands ("scratch that", "new line", "all caps that", etc.).
+   *  Has no effect unless `selfCorrection` is also true and a correction
+   *  model is loaded — commands ride on the correction prompt. Default false. */
+  voiceCommandsEnabled: boolean;
+  /** Optional user override for the voice-commands instruction block. `null`
+   *  (or whitespace-only) uses the built-in default returned by
+   *  `getDefaultVoiceCommandsPrompt`. */
+  voiceCommandsPrompt: string | null;
 }
 
 // Mirror the Rust constants in `crate::history`. Keep these in sync if you
@@ -275,6 +284,11 @@ export const restartApp = () => invoke<void>('restart_app');
 export const getSettings = () => invoke<UserSettings>('get_settings');
 
 export const updateSettings = (settings: UserSettings) => invoke('update_settings', { settings });
+
+/** Built-in default voice-commands instruction block. The settings UI uses
+ *  this as the textarea's initial value and as the "Restore default" target. */
+export const getDefaultVoiceCommandsPrompt = () =>
+  invoke<string>('get_default_voice_commands_prompt');
 
 // ── Launch at login ────────────────────────────────────────────────
 

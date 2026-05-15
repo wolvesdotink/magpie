@@ -11,6 +11,7 @@ import {
   selectCorrectionModel,
   deleteCorrectionModelFile,
   cancelDownload,
+  getDefaultVoiceCommandsPrompt,
   type CorrectionModelInfo,
 } from '@/lib/commands';
 import {
@@ -28,7 +29,48 @@ const {
   updateSelfCorrection,
   updateStreamingPreview,
   updateSelectedCorrectionModel,
+  updateVoiceCommandsEnabled,
+  updateVoiceCommandsPrompt,
 } = useSettings();
+
+const voiceCommandsAvailable = computed(
+  () => !!settings.value?.selfCorrection && !!settings.value?.selectedCorrectionModel,
+);
+
+const voiceCommandsHelper = computed(() =>
+  voiceCommandsAvailable.value
+    ? 'Recognize spoken edits like "scratch that", "new line", "all caps that"'
+    : 'Requires self-correction with a loaded model',
+);
+
+// Built-in default voice-commands instructions (fetched once on mount). Used
+// both as the textarea's effective text when the user hasn't customized and
+// as the target for the "Restore default" button.
+const defaultVoiceCommandsPrompt = ref<string>('');
+
+// Effective text shown in the textarea: the user's override if they've set
+// one, otherwise the built-in default. Bound via get/set so typing saves the
+// override and clearing back to the default discards it (stores null).
+const voiceCommandsPromptText = computed<string>({
+  get: () =>
+    settings.value?.voiceCommandsPrompt ?? defaultVoiceCommandsPrompt.value,
+  set: (next) => {
+    const trimmed = next.trim();
+    if (trimmed === '' || trimmed === defaultVoiceCommandsPrompt.value.trim()) {
+      void updateVoiceCommandsPrompt(null);
+    } else {
+      void updateVoiceCommandsPrompt(next);
+    }
+  },
+});
+
+const voiceCommandsPromptIsCustom = computed(
+  () => settings.value?.voiceCommandsPrompt != null,
+);
+
+function restoreDefaultVoiceCommandsPrompt() {
+  void updateVoiceCommandsPrompt(null);
+}
 
 // ── Correction-model state ──
 const downloadedCorrectionFiles = ref<string[]>([]);
@@ -125,6 +167,12 @@ async function handleDeleteCorrection(model: CorrectionModelInfo) {
 
 onMounted(async () => {
   downloadedCorrectionFiles.value = await getDownloadedCorrectionModels();
+
+  try {
+    defaultVoiceCommandsPrompt.value = await getDefaultVoiceCommandsPrompt();
+  } catch (e) {
+    console.error('Failed to load default voice-commands prompt:', e);
+  }
 
   unlisteners.push(
     await onModelDownloadProgress((progress) => {
@@ -427,6 +475,44 @@ onUnmounted(() => {
       <BaseCard v-if="correctionModelError" tone="flame" padding="sm" class="mt-2">
         <span class="text-[11px] text-flame">{{ correctionModelError }}</span>
       </BaseCard>
+    </template>
+
+    <SettingsRow label="Voice editing commands" :helper="voiceCommandsHelper">
+      <BaseToggle
+        :model-value="!!settings?.voiceCommandsEnabled"
+        :disabled="!voiceCommandsAvailable"
+        @update:model-value="updateVoiceCommandsEnabled($event)"
+      />
+    </SettingsRow>
+
+    <template v-if="settings?.voiceCommandsEnabled && voiceCommandsAvailable">
+      <div class="mt-2">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[10px] font-semibold text-ink-faint tracking-[0.02em]">
+            Commands instructions
+          </span>
+          <button
+            v-if="voiceCommandsPromptIsCustom"
+            type="button"
+            class="text-[10px] font-semibold text-ink-faint hover:text-ink transition-colors duration-150"
+            @click="restoreDefaultVoiceCommandsPrompt"
+          >
+            Restore default
+          </button>
+        </div>
+        <BaseCard tone="dashed">
+          <textarea
+            v-model="voiceCommandsPromptText"
+            rows="10"
+            placeholder="Loading default…"
+            class="w-full min-w-0 rounded-md bg-raised border border-edge text-ink text-[11px] px-2 py-1.5 placeholder:text-ink-faint/50 focus:outline-none focus:border-gold/40 focus:shadow-[0_0_0_3px_rgba(232,175,71,0.08)] resize-y font-mono"
+          />
+          <div class="mt-1 text-[9px] text-ink-faint leading-snug">
+            Appended to the correction system prompt. Edit to add domain-specific
+            commands or tighten the false-positive rules.
+          </div>
+        </BaseCard>
+      </div>
     </template>
   </SettingsSection>
 </template>

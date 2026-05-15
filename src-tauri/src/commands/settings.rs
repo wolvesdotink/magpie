@@ -217,3 +217,13 @@ pub fn open_login_items_settings() {
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 pub fn open_login_items_settings() {}
+
+/// Return the built-in default voice-commands instruction block. The settings
+/// UI uses this as the textarea's default content and as the "Restore default"
+/// target. The string is the pure body text \u{2014} the spacing/separator
+/// between it and the base correction prompt is added by
+/// `augment_prompt_with_commands` at composition time.
+#[tauri::command]
+pub fn get_default_voice_commands_prompt() -> &'static str {
+    crate::correction::engine::VOICE_COMMANDS_INSTRUCTIONS
+}

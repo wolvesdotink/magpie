@@ -341,9 +341,17 @@ pub async fn stop_recording(
                     //                          on global toggle so a user with global
                     //                          correction off isn't surprised)
                     let text = {
-                        let self_correction_global = {
+                        let (
+                            self_correction_global,
+                            voice_commands_enabled,
+                            voice_commands_prompt,
+                        ) = {
                             let settings = lock_or_recover(&state_arc.settings);
-                            settings.self_correction
+                            (
+                                settings.self_correction,
+                                settings.voice_commands_enabled,
+                                settings.voice_commands_prompt.clone(),
+                            )
                         };
 
                         let (should_correct, custom_prompt) = match &correction_override {
@@ -362,6 +370,12 @@ pub async fn stop_recording(
                             }
                         };
 
+                        if voice_commands_enabled && !should_correct {
+                            log::debug!(
+                                "Voice commands enabled but correction stage skipped (style override or global toggle off / disabled); commands will not apply this utterance"
+                            );
+                        }
+
                         if should_correct && !text.is_empty() {
                             tray::set_tray_status(&app_clone, "Magpie \u{2014} Cleaning up...");
                             events::emit_event(&app_clone, event_names::CORRECTION_STARTED, ());
@@ -375,20 +389,41 @@ pub async fn stop_recording(
                                 // Compose the final system prompt. If the style
                                 // carries writing samples, augment whichever
                                 // base prompt was selected (Inherit → default,
-                                // Casual/Formal/Custom → that one).
+                                // Casual/Formal/Custom → that one). If voice
+                                // commands are enabled, also append the commands
+                                // instruction block before the voice samples so
+                                // the voice block stays closest to the user input.
                                 let base_prompt: &str = match custom_prompt {
                                     Some(p) => p,
                                     None => correction::engine::SYSTEM_PROMPT,
                                 };
-                                let augmented;
-                                let final_prompt: &str = if writing_samples.is_empty() {
-                                    base_prompt
+                                let commands_owned;
+                                let after_commands: &str = if voice_commands_enabled {
+                                    let instructions: &str = voice_commands_prompt
+                                        .as_deref()
+                                        .map(str::trim)
+                                        .filter(|s| !s.is_empty())
+                                        .unwrap_or(
+                                            correction::engine::VOICE_COMMANDS_INSTRUCTIONS,
+                                        );
+                                    commands_owned =
+                                        correction::engine::augment_prompt_with_commands(
+                                            base_prompt,
+                                            instructions,
+                                        );
+                                    commands_owned.as_str()
                                 } else {
-                                    augmented = correction::engine::augment_prompt_with_voice(
-                                        base_prompt,
+                                    base_prompt
+                                };
+                                let voice_owned;
+                                let final_prompt: &str = if writing_samples.is_empty() {
+                                    after_commands
+                                } else {
+                                    voice_owned = correction::engine::augment_prompt_with_voice(
+                                        after_commands,
                                         &writing_samples,
                                     );
-                                    augmented.as_str()
+                                    voice_owned.as_str()
                                 };
                                 let result = correction::engine::correct_transcription_with_prompt(
                                     backend,

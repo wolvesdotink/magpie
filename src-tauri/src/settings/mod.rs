@@ -109,6 +109,20 @@ pub struct UserSettings {
     /// hand-edited settings.json files.
     #[serde(default = "default_true")]
     pub history_enabled: bool,
+    /// Whether the LLM correction stage is also asked to interpret spoken
+    /// editing commands ("scratch that", "new line", "all caps that", etc.).
+    /// Has no effect unless `self_correction` is also true and a correction
+    /// model is loaded \u{2014} commands ride on the correction prompt via
+    /// `augment_prompt_with_commands`. Defaults to false so existing users
+    /// see no behavior change after upgrade.
+    #[serde(default)]
+    pub voice_commands_enabled: bool,
+    /// Optional override for the voice-commands instruction block. `None` (or
+    /// whitespace-only) uses the built-in
+    /// [`crate::correction::engine::VOICE_COMMANDS_INSTRUCTIONS`] default \u{2014}
+    /// recommended unless the user has a domain-specific reason to customize.
+    #[serde(default)]
+    pub voice_commands_prompt: Option<String>,
 }
 
 impl Default for UserSettings {
@@ -136,6 +150,8 @@ impl Default for UserSettings {
             update_channel: UpdateChannel::Stable,
             history_max_entries: crate::history::HISTORY_DEFAULT_ENTRIES,
             history_enabled: true,
+            voice_commands_enabled: false,
+            voice_commands_prompt: None,
         }
     }
 }
@@ -312,12 +328,22 @@ mod tests {
         let original = UserSettings {
             selected_model: Some("base.en".into()),
             auto_start: true,
+            voice_commands_enabled: true,
+            voice_commands_prompt: Some("custom commands here".into()),
             ..UserSettings::default()
         };
         let json = serialize_versioned_settings(&original).expect("serialize ok");
         let reloaded = parse_versioned_settings(&json).expect("reload ok");
         assert_eq!(reloaded.selected_model, original.selected_model);
         assert_eq!(reloaded.auto_start, original.auto_start);
+        assert_eq!(
+            reloaded.voice_commands_enabled,
+            original.voice_commands_enabled
+        );
+        assert_eq!(
+            reloaded.voice_commands_prompt,
+            original.voice_commands_prompt
+        );
     }
 
     #[test]
