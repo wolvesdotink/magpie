@@ -63,6 +63,7 @@
   --border: var(--color-edge);
   --recording: var(--color-flame);
   --processing: var(--color-gold);
+  --ink-overlay: #ede8e2;
 }
 
 /* ─── Light mode ─────────────────────────────────────────────────── */
