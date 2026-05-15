@@ -71,7 +71,7 @@ onUnmounted(() => {
 
 .pill.processing {
   color: var(--processing);
-  border-color: rgba(245, 166, 35, 0.3);
+  border-color: color-mix(in srgb, var(--processing) 30%, transparent);
   animation: border-glow-gold 2.4s ease-in-out infinite;
 }
 
@@ -79,13 +79,13 @@ onUnmounted(() => {
   0%,
   100% {
     box-shadow:
-      0 0 0 0 rgba(245, 166, 35, 0),
-      0 0 6px rgba(245, 166, 35, 0.06);
+      0 0 0 0 color-mix(in srgb, var(--processing) 0%, transparent),
+      0 0 6px color-mix(in srgb, var(--processing) 6%, transparent);
   }
   50% {
     box-shadow:
-      0 0 0 2px rgba(245, 166, 35, 0.05),
-      0 0 10px rgba(245, 166, 35, 0.12);
+      0 0 0 2px color-mix(in srgb, var(--processing) 5%, transparent),
+      0 0 10px color-mix(in srgb, var(--processing) 12%, transparent);
   }
 }
 
@@ -165,8 +165,8 @@ onUnmounted(() => {
   border-radius: 50%;
   background: var(--processing);
   box-shadow:
-    0 0 6px rgba(245, 166, 35, 0.3),
-    0 0 12px rgba(245, 166, 35, 0.08);
+    0 0 6px color-mix(in srgb, var(--processing) 30%, transparent),
+    0 0 12px color-mix(in srgb, var(--processing) 8%, transparent);
   filter: hue-rotate(var(--warmth, 0deg));
   animation: dot-hop 1.6s cubic-bezier(0.4, 0, 0.2, 1) var(--d, 0s) infinite;
   will-change: transform;
@@ -180,7 +180,7 @@ onUnmounted(() => {
   width: 6px;
   height: 2px;
   border-radius: 50%;
-  background: rgba(245, 166, 35, 0.12);
+  background: color-mix(in srgb, var(--processing) 12%, transparent);
   transform: translateX(-50%);
   animation: dot-shadow 1.6s cubic-bezier(0.4, 0, 0.2, 1) var(--d, 0s) infinite;
 }

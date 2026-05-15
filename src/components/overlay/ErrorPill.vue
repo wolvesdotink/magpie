@@ -32,15 +32,15 @@ const short = computed(() =>
   padding: 5px 12px;
   border-radius: 14px;
   background: var(--bg-elevated);
-  border: 1px solid rgba(224, 85, 85, 0.45);
+  border: 1px solid color-mix(in srgb, var(--recording) 45%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  color: var(--recording, #e05555);
+  color: var(--recording);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.3;
   text-align: left;
-  box-shadow: 0 0 12px rgba(224, 85, 85, 0.18);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--recording) 18%, transparent);
   will-change: opacity, transform;
 }
 .error-icon {
@@ -50,7 +50,7 @@ const short = computed(() =>
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgba(224, 85, 85, 0.18);
+  background: color-mix(in srgb, var(--recording) 18%, transparent);
   font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;

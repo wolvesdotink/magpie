@@ -153,17 +153,20 @@ async function openSettings() {
     <!-- Loading -->
     <div
       v-if="currentView === 'loading'"
-      class="flex flex-col items-center justify-center h-full gap-4 bg-canvas rounded-xl"
+      class="flex flex-col h-full bg-canvas rounded-xl overflow-hidden shadow-elevated relative surface-grain"
     >
-      <div class="relative">
-        <div
-          class="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-gold via-gold to-gold-deep text-gold-ink font-extrabold text-[16px] shadow-glow-gold"
-        >
-          M
+      <div class="h-[1.5px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
+      <div class="flex-1 flex flex-col items-center justify-center gap-4">
+        <div class="relative">
+          <div
+            class="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-gold via-gold to-gold-deep text-gold-ink font-extrabold text-[16px] shadow-glow-gold"
+          >
+            M
+          </div>
+          <div class="absolute -inset-2 rounded-2xl border-2 border-gold/25 animate-breathe" />
         </div>
-        <div class="absolute -inset-2 rounded-2xl border-2 border-gold/25 animate-breathe" />
+        <p class="text-[11px] text-ink-muted font-medium tracking-tight">Starting Magpie…</p>
       </div>
-      <p class="text-[11px] text-ink-muted font-medium tracking-tight">Starting Magpie…</p>
     </div>
 
     <SetupWizard v-else-if="currentView === 'setup'" @complete="onSetupComplete" />

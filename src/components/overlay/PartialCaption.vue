@@ -213,7 +213,7 @@ watch(
   border: 1px solid var(--border);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  color: var(--text-secondary, rgba(255, 255, 255, 0.92));
+  color: var(--color-ink);
   font-size: 11px;
   font-weight: 400;
   line-height: 1.3;

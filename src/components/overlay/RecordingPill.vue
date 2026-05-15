@@ -125,7 +125,7 @@ onUnmounted(() => {
 
 .pill.recording {
   color: var(--recording);
-  border-color: rgba(224, 85, 85, 0.3);
+  border-color: color-mix(in srgb, var(--recording) 30%, transparent);
   animation: border-glow-red 2s ease-in-out infinite;
 }
 
@@ -133,13 +133,13 @@ onUnmounted(() => {
   0%,
   100% {
     box-shadow:
-      0 0 0 0 rgba(224, 85, 85, 0),
-      0 0 6px rgba(224, 85, 85, 0.08);
+      0 0 0 0 color-mix(in srgb, var(--recording) 0%, transparent),
+      0 0 6px color-mix(in srgb, var(--recording) 8%, transparent);
   }
   50% {
     box-shadow:
-      0 0 0 2px rgba(224, 85, 85, 0.06),
-      0 0 12px rgba(224, 85, 85, 0.15);
+      0 0 0 2px color-mix(in srgb, var(--recording) 6%, transparent),
+      0 0 12px color-mix(in srgb, var(--recording) 15%, transparent);
   }
 }
 
@@ -245,8 +245,8 @@ onUnmounted(() => {
     color-mix(in oklch, var(--recording) 65%, #ffb8a8)
   );
   box-shadow:
-    0 0 6px rgba(224, 85, 85, 0.3),
-    0 0 12px rgba(224, 85, 85, 0.06);
+    0 0 6px color-mix(in srgb, var(--recording) 30%, transparent),
+    0 0 12px color-mix(in srgb, var(--recording) 6%, transparent);
   transition: height 0.06s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: height;
   animation: bar-breathe 2.8s ease-in-out calc(var(--i, 0) * 0.18s) infinite;

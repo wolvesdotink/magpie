@@ -121,8 +121,10 @@ async function recheckPermissions() {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-canvas rounded-xl overflow-hidden">
-    <div class="h-px bg-gradient-to-r from-transparent via-gold/20 to-transparent" />
+  <div
+    class="flex flex-col h-full bg-canvas rounded-xl overflow-hidden shadow-elevated relative surface-grain"
+  >
+    <div class="h-[1.5px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
 
     <div class="flex flex-col items-center px-6 pt-8 pb-6 gap-4 flex-1">
       <div

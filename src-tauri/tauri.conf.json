@@ -45,8 +45,11 @@
         "minWidth": 480,
         "minHeight": 440,
         "resizable": true,
-        "decorations": false,
-        "transparent": true,
+        "decorations": true,
+        "transparent": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 14, "y": 18 },
         "visible": false,
         "alwaysOnTop": false,
         "skipTaskbar": false,
@@ -60,8 +63,11 @@
         "minWidth": 380,
         "minHeight": 360,
         "resizable": true,
-        "decorations": false,
-        "transparent": true,
+        "decorations": true,
+        "transparent": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 14, "y": 18 },
         "visible": false,
         "alwaysOnTop": false,
         "skipTaskbar": false,
@@ -113,9 +119,7 @@
       "active": true,
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzMzZDNjRDRDE5MUE3OUUKUldTZXA1SFJUTVkyb3dvUUVKdnEwQjEyOVZnbjZPaFJoQmMrR2V5Um9HeHAyMW9jUmhIcFZ0c0kK",
-      "endpoints": [
-        "https://github.com/wolvesdotink/magpie/releases/latest/download/latest.json"
-      ]
+      "endpoints": ["https://github.com/wolvesdotink/magpie/releases/latest/download/latest.json"]
     }
   }
 }

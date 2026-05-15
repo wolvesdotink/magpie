@@ -207,13 +207,13 @@ const primaryLabel = computed(() => {
   <div
     :class="
       withChrome
-        ? 'flex flex-col h-full bg-canvas rounded-xl overflow-hidden'
+        ? 'flex flex-col h-full bg-canvas rounded-xl overflow-hidden shadow-elevated relative surface-grain'
         : 'flex flex-col flex-1 min-h-0'
     "
   >
     <div
       v-if="withChrome"
-      class="h-px bg-gradient-to-r from-transparent via-gold/20 to-transparent"
+      class="h-[1.5px] bg-gradient-to-r from-transparent via-gold/40 to-transparent"
     />
 
     <div class="flex flex-col flex-1 p-5 pt-6 min-h-0">

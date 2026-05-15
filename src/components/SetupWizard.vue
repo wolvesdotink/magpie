@@ -66,9 +66,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-canvas rounded-xl overflow-hidden">
+  <div
+    class="flex flex-col h-full bg-canvas rounded-xl overflow-hidden shadow-elevated relative surface-grain"
+  >
     <!-- Top edge -->
-    <div class="h-px bg-gradient-to-r from-transparent via-gold/20 to-transparent" />
+    <div class="h-[1.5px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
 
     <WelcomeStep v-if="currentStep === 'welcome'" @next="nextStep" />
     <PermissionsStep v-else-if="currentStep === 'permissions'" @next="nextStep" />
