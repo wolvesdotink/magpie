@@ -1,11 +1,11 @@
 {
-  "version": "0.1.23-beta.2",
-  "notes": "- Add voice editing commands feature\n- Add writing samples voice reference to styles\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.22...v0.1.23-beta.2",
-  "pub_date": "2026-05-15T08:35:00Z",
+  "version": "0.1.23-beta.3",
+  "notes": "- Switch Settings and History windows to native macOS title bar\n- Add voice editing commands feature\n- Add writing samples voice reference to styles\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.22...v0.1.23-beta.3",
+  "pub_date": "2026-05-15T10:47:23Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzVzd3d2YnhWRXdhZEJkY0pTZlBkb3JqdGpVR3UrOXJFYm4wazlHK093RzZidGZqVjRwOU00Qm5RbmpQZ0lpZVZlT1ByUTM1c1VxdUkvSEJpN016U2drPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4ODM0MDQ3CWZpbGU6TWFncGllLmFwcC50YXIuZ3oKWEltdncyVTdiVGREZVg1SjRrQjBRdTZKdnJ1R0gxYm1JQVRSQ2dsZ1lFZmhwVE4rMFlzSjE4eit6b3NoWUtxTmczVkdMUHBQdTRXRGhtOXRzV3VMQ2c9PQo=",
-      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.23-beta.2/Magpie.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkyb3ptdGwyTEZva29hUFNCWFh2cSs5NnZFSlhOaTZoV3UxU291bE5GejVvUzBhYW9CR05tOXNiNVp0OFB6cUcrWldaRFh2YzNrNC9RRjZuNHRTQXJVVXdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4ODQxOTgzCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKN2dzNlRaVFdjS1hwemZIUXZJMmR3ZFZyNnRpc3hRN0U3U1Q0djJLUlRaUGRWQ1R3bGU2UlRiVkFEUFBTSFFLaFBDVjdrNHdnRlFMUTNTMHlaR1FIRFE9PQo=",
+      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.23-beta.3/Magpie.app.tar.gz"
     }
   }
 }
