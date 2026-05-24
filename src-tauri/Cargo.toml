@@ -57,7 +57,6 @@ llama-cpp-2 = { version = "0.1.141", features = ["dynamic-link"] }
 
 # Text output
 arboard = "3"
-enigo = { version = "0.2", features = ["serde"] }
 
 # macOS native
 cocoa = "0.26"

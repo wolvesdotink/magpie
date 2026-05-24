@@ -58,8 +58,8 @@ pub struct AppStatePayload {
 #[serde(rename_all = "camelCase")]
 pub struct PermissionsPayload {
     pub microphone: bool,
-    /// Accessibility permission — needed by `enigo` to post Cmd+V
-    /// keystrokes into the active app after transcription.
+    /// Accessibility permission — needed to post Cmd+V keystrokes into the
+    /// active app after transcription.
     pub accessibility: bool,
     /// Input Monitoring permission — needed by the CGEventTap to *receive*
     /// keyboard events (including Fn via FlagsChanged). On macOS 10.15+

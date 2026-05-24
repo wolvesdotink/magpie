@@ -104,8 +104,8 @@ pub fn open_microphone_settings() -> Result<()> {
     Ok(())
 }
 
-/// Check if the app has Accessibility permission (needed by `enigo` to post
-/// Cmd+V keystrokes system-wide).
+/// Check if the app has Accessibility permission (needed to post Cmd+V
+/// keystrokes system-wide).
 ///
 /// IMPORTANT: Accessibility is the **write** side of HID — it lets the app
 /// *send* events to other apps. **Listening** for events (what CGEventTap
