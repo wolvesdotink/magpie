@@ -104,10 +104,13 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      - name: Setup Node 20
+      - name: Setup Node 26
         uses: actions/setup-node@v5
         with:
-          node-version: 20
+          # pnpm 11 (pinned via packageManager in package.json) require()s the
+          # node:sqlite builtin, which only exists in Node >=22.13. Node 20
+          # crashes setup-node's `cache: pnpm` store-path probe.
+          node-version: 26
           cache: pnpm
 
       - name: Install JS dependencies
