@@ -64,6 +64,8 @@ pub fn update_settings(
     }
     let auto_start_changed = current.auto_start != settings.auto_start;
     let new_auto_start = settings.auto_start;
+    let memory_saver_changed = current.memory_saver != settings.memory_saver;
+    let new_memory_saver = settings.memory_saver;
     let prior_disabled = !current.history_enabled || current.history_max_entries == 0;
     let disabled_state_changed = prior_disabled != new_disabled;
     *current = settings;
@@ -79,6 +81,25 @@ pub fn update_settings(
     // register/unregister call can take a noticeable moment and may
     // surface a system notification on the main thread.
     drop(current);
+
+    // Memory Saver toggle side-effects (best-effort; never block the save).
+    //   ON  → free the resident model now (if idle) so the savings land
+    //         immediately rather than waiting out the idle timer.
+    //   OFF → warm the model back up in the background so instant-on resumes
+    //         without the next dictation paying the cold-load cost.
+    if memory_saver_changed {
+        if new_memory_saver {
+            if !state.is_recording() && !state.is_processing() {
+                crate::model_loading::unload_models(&state);
+            }
+        } else {
+            let warm_state = state.inner().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                crate::model_loading::ensure_backend_loaded(&warm_state);
+                crate::model_loading::ensure_correction_loaded(&warm_state);
+            });
+        }
+    }
 
     // History side-effects: disabling clears the ring outright; otherwise a
     // lowered cap trims excess entries. Both paths emit HISTORY_ENTRY_ADDED

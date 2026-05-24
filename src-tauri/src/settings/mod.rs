@@ -123,6 +123,14 @@ pub struct UserSettings {
     /// recommended unless the user has a domain-specific reason to customize.
     #[serde(default)]
     pub voice_commands_prompt: Option<String>,
+    /// Memory Saver. When true, the transcription (and correction) model is
+    /// NOT kept resident: it is loaded on the first dictation after launch and
+    /// unloaded again after a stretch of inactivity (see
+    /// [`crate::constants::IDLE_UNLOAD_SECS`]). Trades a one-time reload delay
+    /// after idle for a much smaller footprint — useful on 8 GB Macs. Defaults
+    /// to false so existing users keep the instant-on, always-resident behavior.
+    #[serde(default)]
+    pub memory_saver: bool,
 }
 
 impl Default for UserSettings {
@@ -152,6 +160,7 @@ impl Default for UserSettings {
             history_enabled: true,
             voice_commands_enabled: false,
             voice_commands_prompt: None,
+            memory_saver: false,
         }
     }
 }

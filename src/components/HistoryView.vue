@@ -103,10 +103,7 @@ onUnmounted(() => {
         <p>History is disabled.</p>
         <p class="mt-1">Enable it in Settings → General to start saving transcripts.</p>
       </div>
-      <div
-        v-else-if="entries.length === 0"
-        class="text-center text-ink-faint text-[11px] py-12"
-      >
+      <div v-else-if="entries.length === 0" class="text-center text-ink-faint text-[11px] py-12">
         No dictations yet — start by holding Fn to record.
       </div>
       <div

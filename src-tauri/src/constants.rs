@@ -32,3 +32,11 @@ pub const DOWNLOAD_CONNECT_TIMEOUT_SECS: u64 = 30;
 /// HTTP read timeout for model downloads — if no data received for this long,
 /// the download is considered stalled (seconds)
 pub const DOWNLOAD_READ_TIMEOUT_SECS: u64 = 60;
+
+/// Memory Saver: unload resident models after this many seconds without any
+/// dictation activity. ~5 minutes balances "free the RAM promptly when the
+/// user walks away" against "don't pay a reload on every brief pause".
+pub const IDLE_UNLOAD_SECS: u64 = 300;
+
+/// How often the Memory Saver idle-unload watchdog wakes to check inactivity.
+pub const IDLE_CHECK_INTERVAL_SECS: u64 = 30;

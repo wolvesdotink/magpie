@@ -139,6 +139,12 @@ async function updateStreamingPreview(enabled: boolean) {
   await persist();
 }
 
+async function updateMemorySaver(enabled: boolean) {
+  if (!settings.value) return;
+  settings.value = { ...settings.value, memorySaver: enabled };
+  await persist();
+}
+
 async function updateSetupComplete(completed: boolean) {
   if (!settings.value) return;
   settings.value = { ...settings.value, setupComplete: completed };
@@ -217,6 +223,7 @@ export function useSettings() {
     updateSelfCorrection,
     updateVocabularyLearning,
     updateStreamingPreview,
+    updateMemorySaver,
     updateSetupComplete,
     updateSelectedCorrectionModel,
     updateSelectedModel,

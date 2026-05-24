@@ -10,6 +10,7 @@ const {
   recording,
   processing,
   correcting,
+  loadingModel,
   transitionSource,
   recordingGeneration,
   amplitude,
@@ -31,10 +32,16 @@ function onAfterEnter() {
 
 // Mirror of `recordingGeneration` for the transcribing state. We bump it
 // whenever processing flips true so TranscribingPill's label-swap timer
-// resets without us having to add another field to AppState.
+// resets without us having to add another field to AppState. We also bump
+// when a model-load finishes (loadingModel → false) so the label re-shows
+// "Transcribing" briefly after "Preparing model" rather than jumping
+// straight to the dots.
 const transcribingGeneration = ref(0);
 watch(processing, (isProc) => {
   if (isProc) transcribingGeneration.value++;
+});
+watch(loadingModel, (isLoading, was) => {
+  if (was && !isLoading && processing.value) transcribingGeneration.value++;
 });
 </script>
 
@@ -49,7 +56,11 @@ watch(processing, (isProc) => {
           <RecordingPill :amplitude="amplitude" :generation="recordingGeneration" />
         </div>
         <div v-else-if="processing" key="processing" class="pill-outer">
-          <TranscribingPill :correcting="correcting" :generation="transcribingGeneration" />
+          <TranscribingPill
+            :correcting="correcting"
+            :loading="loadingModel"
+            :generation="transcribingGeneration"
+          />
         </div>
       </Transition>
     </div>

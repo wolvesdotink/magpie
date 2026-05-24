@@ -11,6 +11,7 @@ import {
   onCorrectionComplete,
   onAudioAmplitude,
   onPartialTranscription,
+  onModelLoading,
   type TranscriptionResult,
   type AudioAmplitudePayload,
 } from '@/lib/events';
@@ -22,6 +23,9 @@ export function useAppState() {
   const hasModel = ref(false);
   const lastTranscription = ref('');
   const correcting = ref(false);
+  // True while a Memory Saver lazy model load is in flight — drives the
+  // overlay's "Preparing model" label so a cold start doesn't look stuck.
+  const loadingModel = ref(false);
   const error = ref<string | null>(null);
   const transitionSource = ref<'idle' | 'processing' | null>(null);
   const recordingGeneration = ref(0);
@@ -76,6 +80,8 @@ export function useAppState() {
         recordingGeneration.value++;
         // New recording wipes any leftover partial caption from the prior session.
         partialText.value = '';
+        // A fresh session clears any stale "preparing model" state.
+        loadingModel.value = false;
       }),
     );
 
@@ -108,6 +114,7 @@ export function useAppState() {
       await onTranscriptionComplete((result: TranscriptionResult) => {
         processing.value = false;
         correcting.value = false;
+        loadingModel.value = false;
         lastTranscription.value = result.text;
         // Final result has replaced the live preview — clear so the
         // overlay's processing pill renders without a stale caption.
@@ -122,9 +129,16 @@ export function useAppState() {
     );
 
     unlisteners.push(
+      await onModelLoading((data) => {
+        loadingModel.value = data.loading;
+      }),
+    );
+
+    unlisteners.push(
       await onTranscriptionError((err) => {
         processing.value = false;
         correcting.value = false;
+        loadingModel.value = false;
         // Drop any stale partial caption — a failed final pass means the
         // preview text is no longer the user's intended output.
         partialText.value = '';
@@ -160,6 +174,7 @@ export function useAppState() {
     recording,
     processing,
     correcting,
+    loadingModel,
     hasModel,
     lastTranscription,
     error,

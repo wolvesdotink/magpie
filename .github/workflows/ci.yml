@@ -11,9 +11,9 @@
 #   - cargo fmt --check          formatting drift in Rust code
 #   - cargo clippy -D warnings   new lint warnings fail the build
 #   - cargo test                 unit + integration tests for src-tauri
-#   - bun run typecheck          vue-tsc --noEmit (strict)
-#   - bun run lint               eslint flat-config (Vue 3 + TS)
-#   - bun run format:check       prettier --check
+#   - pnpm run typecheck         vue-tsc --noEmit (strict)
+#   - pnpm run lint              eslint flat-config (Vue 3 + TS)
+#   - pnpm run format:check      prettier --check
 #
 # RUNNER CHOICE
 #   We use macos-latest because src-tauri pulls in Apple-specific dependencies
@@ -41,17 +41,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
         with:
-          bun-version: latest
+          node-version: 20
+          cache: pnpm
       - name: Install JS dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Typecheck (vue-tsc)
-        run: bun run typecheck
+        run: pnpm run typecheck
       - name: ESLint
-        run: bun run lint
+        run: pnpm run lint
       - name: Prettier check
-        run: bun run format:check
+        run: pnpm run format:check
 
   rust:
     name: Rust checks
@@ -73,7 +75,7 @@ jobs:
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Clippy
         # The Phase 0 backlog has been paid down (commit 85c9b4c) and the
-        # local `bun run rust:clippy` already runs with `-D warnings`, so CI
+        # local `pnpm run rust:clippy` already runs with `-D warnings`, so CI
         # matches. New warnings now fail the PR.
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Test

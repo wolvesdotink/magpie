@@ -58,7 +58,7 @@
 #     TAURI_SIGNING_PRIVATE_KEY_PASSWORD   blank if generated without password
 #
 #   Generate the updater keypair once with:
-#     bun tauri signer generate -w .secrets/updater.key
+#     pnpm tauri signer generate -w .secrets/updater.key
 #   Then paste the .secrets/updater.key contents into TAURI_SIGNING_PRIVATE_KEY
 #   and the .pub contents into src-tauri/tauri.conf.json's `plugins.updater.pubkey`.
 #
@@ -101,18 +101,17 @@ jobs:
           # previous stable tag for the changelog diff.
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node 20
         uses: actions/setup-node@v5
         with:
           node-version: 20
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+          cache: pnpm
 
       - name: Install JS dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       # create-dmg builds the styled installer (background image, custom volume
       # icon, icon positions). Without it, scripts/build-macos.sh errors out at

@@ -17,7 +17,7 @@
  *
  * Dev-mode behavior:
  *   The Rust commands need a real signed bundle + valid pubkey to do
- *   anything useful. In `bun tauri dev` and plain Vite previews every
+ *   anything useful. In `pnpm tauri dev` and plain Vite previews every
  *   call errors; we surface that as `status: 'error'` rather than
  *   crashing.
  */

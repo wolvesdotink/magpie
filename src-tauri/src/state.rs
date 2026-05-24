@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cpal::Stream;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -32,6 +33,13 @@ use crate::vocabulary::Vocabulary;
 /// Releasing order is unconstrained; acquisition order alone prevents
 /// classic AB-BA deadlocks.
 ///
+/// 0. `model_load_lock` (outermost): held for the duration of a lazy model
+///    load or an idle unload (Memory Saver). Serializes those operations so
+///    a background preload, a stop-time load, and the idle-unload watchdog
+///    can never interleave (which could free a backend another path just
+///    stored). Acquired before any rank below; the slow FFI load runs while
+///    holding only this lock — the `backend`/`settings` guards are taken
+///    briefly, in rank order, to read the selection and store the result.
 /// 1. `settings`
 /// 2. `backend`, `current_model_path` (always together when both are
 ///    held; treated as one rank because the backend swap is conceptually
@@ -141,6 +149,14 @@ pub struct AppState {
     /// `cancel_download` command flips the token's flag, which the streaming
     /// loop in `downloader::download_model` checks each chunk.
     pub active_downloads: Mutex<HashMap<String, CancellationToken>>,
+    /// Outermost lock (rank 0) guarding lazy model loads and idle unloads —
+    /// see the lock-ordering protocol above. A unit mutex used purely for
+    /// mutual exclusion; it carries no data.
+    pub model_load_lock: Mutex<()>,
+    /// Epoch-millis timestamp of the last dictation activity (recording
+    /// start/stop). Read by the Memory Saver idle-unload watchdog to decide
+    /// when a resident model has been idle long enough to drop. Lock-free.
+    pub last_activity_ms: AtomicU64,
     /// Cached `Update` returned by the most recent `magpie_updater_check`.
     /// `magpie_updater_install` `.take()`s it before calling
     /// `download_and_install`. Cleared on a check that finds no update.
@@ -158,6 +174,15 @@ pub struct AppState {
 // std::sync version too — parking_lot doesn't change the requirement.
 unsafe impl Send for AppState {}
 unsafe impl Sync for AppState {}
+
+/// Current time as epoch milliseconds. Returns 0 if the system clock is
+/// before the Unix epoch (not expected); the idle math degrades gracefully.
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 impl AppState {
     pub fn new() -> Self {
@@ -187,6 +212,8 @@ impl AppState {
             current_shortcut: Mutex::new(None),
             pending_reload: Mutex::new(None),
             active_downloads: Mutex::new(HashMap::new()),
+            model_load_lock: Mutex::new(()),
+            last_activity_ms: AtomicU64::new(now_ms()),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             pending_update: Mutex::new(None),
         }
@@ -210,6 +237,19 @@ impl AppState {
 
     pub fn set_amplitude(&self, val: f32) {
         self.amplitude_rms.store(val.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Record that dictation activity just happened (recording start or
+    /// stop). Resets the Memory Saver idle clock so a model in active use is
+    /// never unloaded out from under the user.
+    pub fn mark_activity(&self) {
+        self.last_activity_ms.store(now_ms(), Ordering::Relaxed);
+    }
+
+    /// Seconds elapsed since the last [`mark_activity`](Self::mark_activity).
+    pub fn idle_secs(&self) -> u64 {
+        let last = self.last_activity_ms.load(Ordering::Relaxed);
+        now_ms().saturating_sub(last) / 1000
     }
 
     pub fn get_amplitude(&self) -> f32 {

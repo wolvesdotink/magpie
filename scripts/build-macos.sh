@@ -118,7 +118,7 @@ verbose() { $VERBOSE && echo "    [verbose] $*" || true; }
 
 log "Checking prerequisites..."
 
-command -v bun   >/dev/null 2>&1 || err "bun is not installed. Install from https://bun.sh"
+command -v pnpm  >/dev/null 2>&1 || err "pnpm is not installed. Install from https://pnpm.io"
 command -v cargo >/dev/null 2>&1 || err "cargo is not installed. Install from https://rustup.rs"
 command -v otool >/dev/null 2>&1 || err "otool not found. Install Xcode Command Line Tools."
 
@@ -144,7 +144,7 @@ if $UPDATER; then
     : "${TAURI_SIGNING_PRIVATE_KEY:?--updater requires TAURI_SIGNING_PRIVATE_KEY env var}"
 fi
 
-info "bun $(bun --version), cargo $(cargo --version | awk '{print $2}')"
+info "pnpm $(pnpm --version), cargo $(cargo --version | awk '{print $2}')"
 
 # ─── Phase 2: Clean (optional) ──────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ fi
 
 log "Building $APP_NAME ($PROFILE)..."
 
-BUILD_CMD=(bun tauri build --bundles app)
+BUILD_CMD=(pnpm tauri build --bundles app)
 
 if $UNIVERSAL; then
     BUILD_CMD+=(--target universal-apple-darwin)
@@ -403,7 +403,7 @@ if $UPDATER; then
     # the input file.
     TAURI_SIGNING_PRIVATE_KEY="$TAURI_SIGNING_PRIVATE_KEY" \
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
-    bun tauri signer sign \
+    pnpm tauri signer sign \
         --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
         --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
         "$UPDATER_TARBALL"

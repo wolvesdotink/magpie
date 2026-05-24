@@ -1,15 +1,23 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue';
+import { computed, ref, watch, onUnmounted } from 'vue';
 
 const props = defineProps<{
   /** True while the LLM correction pass is running (vs. the raw whisper
    *  decode). Just swaps the label text — visuals are identical. */
   correcting: boolean;
+  /** True while a Memory Saver lazy model load is in flight, before the
+   *  decode starts. Shows "Preparing model" and takes precedence over the
+   *  transcribing/correcting labels. */
+  loading?: boolean;
   /** Increments each time we transition INTO transcribing so the label-swap
    *  timer resets and the user sees "Transcribing" briefly before the dots
    *  take over. The parent owns the value; we react to changes. */
   generation: number;
 }>();
+
+const label = computed(() =>
+  props.loading ? 'Preparing model' : props.correcting ? 'Cleaning up' : 'Transcribing',
+);
 
 // ── Label → typing-dots swap ──
 const showLabel = ref(true);
@@ -42,7 +50,7 @@ onUnmounted(() => {
     </div>
     <div class="content-swap">
       <span class="label shimmer swap-item" :class="{ active: showLabel }">
-        {{ correcting ? 'Cleaning up' : 'Transcribing' }}
+        {{ label }}
       </span>
       <div class="typing-dots swap-item" :class="{ active: !showLabel }">
         <div class="t-dot" style="--d: 0s; --warmth: 0deg" />

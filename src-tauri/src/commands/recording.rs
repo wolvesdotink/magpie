@@ -99,6 +99,21 @@ pub async fn start_recording(
     overlay::show_overlay(&app);
     events::emit_event(&app, event_names::RECORDING_STARTED, ());
 
+    // Mark activity so Memory Saver's idle clock won't unload mid-session.
+    state.mark_activity();
+
+    // Memory Saver: the model may be unloaded (or never eagerly loaded this
+    // launch). Kick off a background load now so it's ready by the time the
+    // user stops speaking — overlapping the load with dictation hides most of
+    // the cold-start latency. No-op fast path when already resident; serialized
+    // with the stop-time load and the idle-unload watchdog via model_load_lock.
+    if lock_or_recover(&state.backend).is_none() {
+        let preload_state = state_arc.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::model_loading::ensure_backend_loaded(&preload_state);
+        });
+    }
+
     // Spawn the streaming-preview worker. It will poll the audio buffer
     // every ~300 ms and emit PARTIAL_TRANSCRIPTION events the overlay can
     // render as a live caption. Skip if no backend is loaded — there's
@@ -178,6 +193,9 @@ pub async fn stop_recording(
             message: "Not recording".into(),
         });
     }
+
+    // Mark activity so Memory Saver's idle clock counts from this dictation.
+    state.mark_activity();
 
     // Drop the stream to stop recording
     {
@@ -302,7 +320,29 @@ pub async fn stop_recording(
         // backend alive until this scope ends. Named `asr_backend` to avoid
         // shadowing inside the correction block below, which has its own
         // `backend` (the LlamaBackend).
-        let asr_backend = lock_or_recover(&state_arc.backend).clone();
+        let asr_backend = {
+            let resident = lock_or_recover(&state_arc.backend).clone();
+            if resident.is_some() {
+                resident
+            } else {
+                // Memory Saver (or first dictation this launch): the model
+                // isn't resident. Load it now — we're on a blocking task, so
+                // a synchronous load is fine. Flag the overlay so it shows
+                // "Preparing model" instead of a stuck "Transcribing".
+                events::emit_event(
+                    &app_clone,
+                    event_names::MODEL_LOADING,
+                    crate::events::ModelLoadingPayload { loading: true },
+                );
+                let loaded = crate::model_loading::ensure_backend_loaded(&state_arc);
+                events::emit_event(
+                    &app_clone,
+                    event_names::MODEL_LOADING,
+                    crate::events::ModelLoadingPayload { loading: false },
+                );
+                loaded
+            }
+        };
         if let Some(asr_backend) = asr_backend {
             // Resample to whatever rate the backend wants (16kHz for whisper.cpp).
             let target_rate = asr_backend.capabilities().sample_rate_hz;
@@ -341,11 +381,7 @@ pub async fn stop_recording(
                     //                          on global toggle so a user with global
                     //                          correction off isn't surprised)
                     let text = {
-                        let (
-                            self_correction_global,
-                            voice_commands_enabled,
-                            voice_commands_prompt,
-                        ) = {
+                        let (self_correction_global, voice_commands_enabled, voice_commands_prompt) = {
                             let settings = lock_or_recover(&state_arc.settings);
                             (
                                 settings.self_correction,
@@ -380,6 +416,10 @@ pub async fn stop_recording(
                             tray::set_tray_status(&app_clone, "Magpie \u{2014} Cleaning up...");
                             events::emit_event(&app_clone, event_names::CORRECTION_STARTED, ());
 
+                            // Memory Saver may have unloaded the correction
+                            // model — bring it back before reading the guards.
+                            crate::model_loading::ensure_correction_loaded(&state_arc);
+
                             let backend_guard = lock_or_recover(&state_arc.llama_backend);
                             let model_guard = lock_or_recover(&state_arc.correction_model);
 
@@ -403,9 +443,7 @@ pub async fn stop_recording(
                                         .as_deref()
                                         .map(str::trim)
                                         .filter(|s| !s.is_empty())
-                                        .unwrap_or(
-                                            correction::engine::VOICE_COMMANDS_INSTRUCTIONS,
-                                        );
+                                        .unwrap_or(correction::engine::VOICE_COMMANDS_INSTRUCTIONS);
                                     commands_owned =
                                         correction::engine::augment_prompt_with_commands(
                                             base_prompt,

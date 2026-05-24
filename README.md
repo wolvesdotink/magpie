@@ -25,9 +25,9 @@ The app is signed and notarized by Apple, so it should open without warnings on 
 ## Build from source
 
 ```bash
-bun install
-bun tauri dev          # run in development
-bun run build:mac      # local release build (.app + .dmg)
+pnpm install
+pnpm tauri dev         # run in development
+pnpm run build:mac     # local release build (.app + .dmg)
 ```
 
 Release builds (signed, notarized, with auto-updater payload) happen in CI when a `v*.*.*` tag is pushed. See [`.github/workflows/release.yml`](.github/workflows/release.yml) and [`scripts/build-macos.sh`](scripts/build-macos.sh).

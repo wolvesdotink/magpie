@@ -486,7 +486,10 @@ mod tests {
         assert!(out.contains("scratch that"));
         assert!(out.contains("new line"));
         assert!(out.contains("all caps that"));
-        assert!(out.contains("scratch that itch"), "false-positive guard text");
+        assert!(
+            out.contains("scratch that itch"),
+            "false-positive guard text"
+        );
         assert!(out.len() <= CUSTOM_PROMPT_MAX_CHARS);
     }
 
@@ -508,7 +511,9 @@ mod tests {
             &augment_prompt_with_commands(base, VOICE_COMMANDS_INSTRUCTIONS),
             &samples,
         );
-        let cmd_pos = out.find("VOICE EDITING COMMANDS").expect("commands block present");
+        let cmd_pos = out
+            .find("VOICE EDITING COMMANDS")
+            .expect("commands block present");
         let voice_pos = out.find("VOICE REFERENCE").expect("voice block present");
         assert!(
             cmd_pos < voice_pos,

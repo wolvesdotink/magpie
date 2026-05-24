@@ -152,6 +152,7 @@ pub fn run() {
             commands::toggle_recording,
             commands::cancel_recording,
             commands::get_app_state,
+            commands::get_system_memory,
             commands::get_available_models,
             commands::get_downloaded_models,
             commands::download_model,

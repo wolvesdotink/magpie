@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useModelDownloader } from '@/composables/useModelDownloader';
 import { useConfirmAction } from '@/composables/useConfirmAction';
 import SettingsSection from '@/components/base/SettingsSection.vue';
+import SettingsRow from '@/components/base/SettingsRow.vue';
+import BaseToggle from '@/components/base/BaseToggle.vue';
 import BaseCard from '@/components/base/BaseCard.vue';
 import Badge from '@/components/base/Badge.vue';
 import ProgressBar from '@/components/base/ProgressBar.vue';
 import RatingDots from '@/components/base/RatingDots.vue';
-import type { ModelInfo } from '@/lib/commands';
+import { getSystemMemory, type ModelInfo } from '@/lib/commands';
 
-const { settings, models, currentModel, updateSelectedModel } = useSettings();
+const { settings, models, currentModel, updateSelectedModel, updateMemorySaver } = useSettings();
 const downloader = useModelDownloader('whisper');
 const confirmDelete = useConfirmAction();
 
@@ -23,6 +25,54 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
+
+const GB = 1024 ** 3;
+
+// Total physical RAM, fetched once. 0 means "unknown" → we skip RAM warnings.
+const systemMemoryBytes = ref(0);
+onMounted(async () => {
+  try {
+    systemMemoryBytes.value = await getSystemMemory();
+  } catch (e) {
+    console.error('Failed to read system memory:', e);
+  }
+});
+
+// Resident memory ≈ the GGML weights (≈ file size) plus a modest allowance
+// for whisper's KV/compute and Metal scratch buffers. Deliberately rough —
+// always shown with a "≈".
+function ramEstimateBytes(sizeBytes: number): number {
+  return Math.round(sizeBytes * 1.15);
+}
+
+// 8 GB-class Macs are where the footprint actually pinches. The 8.5 GB cutoff
+// catches machines that report a hair under 8 GiB.
+const lowRam = computed(() => systemMemoryBytes.value > 0 && systemMemoryBytes.value <= 8.5 * GB);
+
+// Warn when the active model is heavy relative to the machine: an absolute
+// ~0.9 GB+ on low-RAM Macs, or >25% of RAM on larger ones.
+const showHeavyWarning = computed(() => {
+  const m = currentModel.value;
+  if (!m || systemMemoryBytes.value <= 0) return false;
+  const est = ramEstimateBytes(m.sizeBytes);
+  return lowRam.value ? est >= 0.9 * GB : est > 0.25 * systemMemoryBytes.value;
+});
+
+const heavyWarning = computed(() => {
+  const m = currentModel.value;
+  if (!m) return '';
+  const est = ramEstimateBytes(m.sizeBytes);
+  const pct = systemMemoryBytes.value > 0 ? Math.round((est / systemMemoryBytes.value) * 100) : 0;
+  const ofRam =
+    systemMemoryBytes.value > 0
+      ? ` (~${pct}% of your ${formatBytes(systemMemoryBytes.value)})`
+      : '';
+  return (
+    `${m.displayName} uses about ${formatBytes(est)} of memory${ofRam}. ` +
+    'A smaller model (Small or Distil Small) cuts that sharply, or turn on ' +
+    'Memory Saver below to free it when idle.'
+  );
+});
 
 function isDownloaded(model: ModelInfo): boolean {
   return downloader.isDownloaded(model.filename);
@@ -89,7 +139,7 @@ async function handleDelete(model: ModelInfo) {
           </span>
         </div>
         <span class="text-[10px] text-ink-faint font-medium tabular-nums">
-          {{ formatBytes(currentModel.sizeBytes) }}
+          ≈{{ formatBytes(ramEstimateBytes(currentModel.sizeBytes)) }} in memory
         </span>
       </div>
       <div class="flex gap-4">
@@ -111,7 +161,40 @@ async function handleDelete(model: ModelInfo) {
       <span class="text-[12px] text-flame font-medium">No model selected</span>
     </BaseCard>
 
-    <div v-if="downloadedModels.length > 0" class="mb-3">
+    <BaseCard v-if="showHeavyWarning" tone="gold" padding="sm" class="mb-3">
+      <div class="flex items-start gap-2">
+        <svg
+          class="flex-shrink-0 mt-[1px]"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+          />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <span class="text-[10px] text-gold leading-snug">{{ heavyWarning }}</span>
+      </div>
+    </BaseCard>
+
+    <SettingsRow
+      label="Memory Saver"
+      helper="Unload the model when idle and reload it on your next dictation — big memory savings, with a brief load the first time you dictate after a pause."
+    >
+      <BaseToggle
+        :model-value="!!settings?.memorySaver"
+        @update:model-value="updateMemorySaver($event)"
+      />
+    </SettingsRow>
+
+    <div v-if="downloadedModels.length > 0" class="mb-3 mt-3">
       <span class="text-[10px] font-semibold text-ink-faint tracking-[0.02em]">Downloaded</span>
       <div class="flex flex-col gap-1.5 mt-1.5">
         <div
@@ -145,7 +228,7 @@ async function handleDelete(model: ModelInfo) {
                 {{ model.displayName }}
               </span>
               <span class="text-[10px] text-ink-faint tabular-nums">
-                {{ formatBytes(model.sizeBytes) }}
+                ≈{{ formatBytes(ramEstimateBytes(model.sizeBytes)) }} RAM
                 <template v-if="model.englishOnly"> · English</template>
                 <template v-else> · Multilingual</template>
               </span>
@@ -237,7 +320,10 @@ async function handleDelete(model: ModelInfo) {
             </div>
             <div class="flex items-center gap-3 mt-0.5">
               <span class="text-[10px] text-ink-faint tabular-nums">
-                {{ formatBytes(model.sizeBytes) }}
+                {{ formatBytes(model.sizeBytes) }} · ≈{{
+                  formatBytes(ramEstimateBytes(model.sizeBytes))
+                }}
+                RAM
               </span>
               <div class="flex items-center gap-1">
                 <span class="text-[8px] uppercase tracking-[0.06em] font-semibold text-ink-faint">

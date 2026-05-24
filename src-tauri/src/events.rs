@@ -21,6 +21,9 @@ pub mod event_names {
     pub const STYLES_CHANGED: &str = "styles-changed";
     pub const PROFILES_CHANGED: &str = "profiles-changed";
     pub const HISTORY_ENTRY_ADDED: &str = "history-entry-added";
+    /// Emitted around a Memory Saver lazy model load so the overlay can show
+    /// a "Preparing model" state while the model is brought into memory.
+    pub const MODEL_LOADING: &str = "model-loading";
 }
 
 #[derive(Clone, Serialize)]
@@ -73,6 +76,14 @@ pub struct PermissionsPayload {
 pub struct AudioAmplitudePayload {
     /// Normalized amplitude value, 0.0 to 1.0
     pub amplitude: f32,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelLoadingPayload {
+    /// True while a model is being loaded into memory (Memory Saver), false
+    /// once it's ready. Drives the overlay's "Preparing model" label.
+    pub loading: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -192,6 +203,13 @@ mod tests {
     }
 
     #[test]
+    fn model_loading_payload_shape() {
+        let payload = ModelLoadingPayload { loading: true };
+        let value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(value, json!({ "loading": true }));
+    }
+
+    #[test]
     fn vocabulary_learned_payload_shape_global() {
         let payload = VocabularyLearnedPayload {
             wrong: "cubernetes".into(),
@@ -254,5 +272,6 @@ mod tests {
         assert_eq!(event_names::STYLES_CHANGED, "styles-changed");
         assert_eq!(event_names::PROFILES_CHANGED, "profiles-changed");
         assert_eq!(event_names::HISTORY_ENTRY_ADDED, "history-entry-added");
+        assert_eq!(event_names::MODEL_LOADING, "model-loading");
     }
 }

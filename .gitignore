@@ -19,7 +19,7 @@ node_modules/
 /src-tauri/gen/schemas/
 
 # Updater signing keys — must NEVER be committed.
-# Run `bun tauri signer generate -w .secrets/updater.key` to create them.
+# Run `pnpm tauri signer generate -w .secrets/updater.key` to create them.
 /.secrets/
 
 # Build/release scratch

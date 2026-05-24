@@ -66,8 +66,16 @@ pub(crate) fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::
     cleanup_stale_downloads();
 
     let state = app.state::<Arc<AppState>>();
-    try_load_last_model(&state, app.handle());
-    try_load_last_correction_model(&state);
+    // Memory Saver defers model loading to the first dictation so an idle
+    // Magpie starts (and stays) at a small footprint. Otherwise eagerly load
+    // the last-used models for instant-on dictation.
+    let memory_saver = lock_or_recover(&state.settings).memory_saver;
+    if memory_saver {
+        log::info!("Memory Saver enabled — deferring model load until first dictation");
+    } else {
+        try_load_last_model(&state, app.handle());
+        try_load_last_correction_model(&state);
+    }
 
     // Reconcile launch-at-login: settings.json is authoritative for intent,
     // but System Settings → Login Items is authoritative for OS state. If
@@ -100,7 +108,7 @@ pub(crate) fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::
     // surfacing the window is enough — without this, a returning user who
     // revoked a permission would press Fn and get no signal.
     {
-        let has_model = lock_or_recover(&state.backend).is_some();
+        let has_model = crate::model_loading::has_usable_model(&state);
         let perms = commands::check_permissions();
         let missing_perms = !perms.microphone || !perms.accessibility || !perms.input_monitoring;
         if !has_model || missing_perms {
@@ -198,6 +206,31 @@ pub(crate) fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::
                         log::error!("Fn key monitor watchdog: restart error: {}", e);
                     }
                 }
+            }
+        }
+    });
+
+    // Memory Saver idle-unload watchdog. When enabled, drop resident models
+    // after IDLE_UNLOAD_SECS without dictation so an idle Magpie returns to a
+    // small footprint; the next Fn press lazily reloads. No-op (and cheap)
+    // when Memory Saver is off or nothing is resident.
+    let idle_app = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            sleep(Duration::from_secs(
+                crate::constants::IDLE_CHECK_INTERVAL_SECS,
+            ))
+            .await;
+
+            let state = idle_app.state::<Arc<AppState>>();
+            let memory_saver = lock_or_recover(&state.settings).memory_saver;
+            if !memory_saver || state.is_recording() || state.is_processing() {
+                continue;
+            }
+            let resident = lock_or_recover(&state.backend).is_some()
+                || lock_or_recover(&state.correction_model).is_some();
+            if resident && state.idle_secs() >= crate::constants::IDLE_UNLOAD_SECS {
+                crate::model_loading::unload_models(&state);
             }
         }
     });

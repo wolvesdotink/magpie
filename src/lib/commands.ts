@@ -88,6 +88,11 @@ export interface UserSettings {
    *  (or whitespace-only) uses the built-in default returned by
    *  `getDefaultVoiceCommandsPrompt`. */
   voiceCommandsPrompt: string | null;
+  /** Memory Saver. When true the transcription/correction model is loaded on
+   *  the first dictation after launch and unloaded again after a stretch of
+   *  inactivity, trading a one-time reload delay for a much smaller idle
+   *  footprint. Default false (model stays resident for instant-on). */
+  memorySaver: boolean;
 }
 
 // Mirror the Rust constants in `crate::history`. Keep these in sync if you
@@ -220,6 +225,10 @@ export const cancelRecording = () => invoke('cancel_recording');
 // ── App State ──────────────────────────────────────────────────────
 
 export const getAppState = () => invoke<AppState>('get_app_state');
+
+/** Total physical RAM in bytes (0 if unknown). Used by the model picker to
+ *  size its memory-cost warnings to the user's machine. */
+export const getSystemMemory = () => invoke<number>('get_system_memory');
 
 // ── Models ─────────────────────────────────────────────────────────
 

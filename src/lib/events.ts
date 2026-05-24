@@ -38,6 +38,12 @@ export interface AudioAmplitudePayload {
   amplitude: number;
 }
 
+export interface ModelLoadingPayload {
+  /** True while a model is being loaded into memory (Memory Saver), false
+   *  once it's ready. */
+  loading: boolean;
+}
+
 export interface VocabularyLearnedPayload {
   wrong: string;
   correct: string;
@@ -156,4 +162,10 @@ export function onProfilesChanged(callback: () => void): Promise<UnlistenFn> {
 
 export function onHistoryEntryAdded(callback: () => void): Promise<UnlistenFn> {
   return listen('history-entry-added', () => callback());
+}
+
+export function onModelLoading(callback: (data: ModelLoadingPayload) => void): Promise<UnlistenFn> {
+  return listen('model-loading', (event) => {
+    callback(event.payload as ModelLoadingPayload);
+  });
 }

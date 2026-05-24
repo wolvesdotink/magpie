@@ -52,8 +52,7 @@ const defaultVoiceCommandsPrompt = ref<string>('');
 // one, otherwise the built-in default. Bound via get/set so typing saves the
 // override and clearing back to the default discards it (stores null).
 const voiceCommandsPromptText = computed<string>({
-  get: () =>
-    settings.value?.voiceCommandsPrompt ?? defaultVoiceCommandsPrompt.value,
+  get: () => settings.value?.voiceCommandsPrompt ?? defaultVoiceCommandsPrompt.value,
   set: (next) => {
     const trimmed = next.trim();
     if (trimmed === '' || trimmed === defaultVoiceCommandsPrompt.value.trim()) {
@@ -64,9 +63,7 @@ const voiceCommandsPromptText = computed<string>({
   },
 });
 
-const voiceCommandsPromptIsCustom = computed(
-  () => settings.value?.voiceCommandsPrompt != null,
-);
+const voiceCommandsPromptIsCustom = computed(() => settings.value?.voiceCommandsPrompt != null);
 
 function restoreDefaultVoiceCommandsPrompt() {
   void updateVoiceCommandsPrompt(null);
@@ -86,6 +83,12 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+// Rough resident-memory estimate for a correction model (weights ≈ file size
+// plus a small allowance for the llama.cpp context). Always shown with a "≈".
+function ramEstimateBytes(bytes: number): number {
+  return Math.round(bytes * 1.15);
 }
 
 function isCorrectionDownloaded(model: CorrectionModelInfo): boolean {
@@ -279,11 +282,14 @@ onUnmounted(() => {
             {{ downloadedCorrectionModels.find((m) => isCorrectionActive(m))?.displayName }}
           </span>
           <span class="text-[9px] text-ink-faint tabular-nums ml-auto">
-            {{
+            ≈{{
               formatBytes(
-                downloadedCorrectionModels.find((m) => isCorrectionActive(m))?.sizeBytes ?? 0,
+                ramEstimateBytes(
+                  downloadedCorrectionModels.find((m) => isCorrectionActive(m))?.sizeBytes ?? 0,
+                ),
               )
             }}
+            in memory
           </span>
         </div>
       </BaseCard>
@@ -508,8 +514,8 @@ onUnmounted(() => {
             class="w-full min-w-0 rounded-md bg-raised border border-edge text-ink text-[11px] px-2 py-1.5 placeholder:text-ink-faint/50 focus:outline-none focus:border-gold/40 focus:shadow-[0_0_0_3px_rgba(232,175,71,0.08)] resize-y font-mono"
           />
           <div class="mt-1 text-[9px] text-ink-faint leading-snug">
-            Appended to the correction system prompt. Edit to add domain-specific
-            commands or tighten the false-positive rules.
+            Appended to the correction system prompt. Edit to add domain-specific commands or
+            tighten the false-positive rules.
           </div>
         </BaseCard>
       </div>

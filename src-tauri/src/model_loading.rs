@@ -13,6 +13,9 @@
 
 use std::sync::Arc;
 
+use llama_cpp_2::llama_backend::LlamaBackend;
+use llama_cpp_2::model::LlamaModel;
+
 use crate::correction;
 use crate::events;
 use crate::models;
@@ -61,20 +64,8 @@ pub fn load_with_self_test(path: &std::path::Path) -> LoadOutcome {
 /// upgrades that introduce ANE acceleration over models downloaded by
 /// an older build.
 pub fn try_load_last_model(state: &Arc<AppState>, app_handle: &tauri::AppHandle) {
-    let selected = lock_or_recover(&state.settings).selected_model.clone();
-
-    let (model_id, path, info) = match selected {
-        Some(id) => {
-            let info = match models::registry::find_model(&id) {
-                Some(i) => i,
-                None => return,
-            };
-            let p = match models::storage::model_path(&info.filename) {
-                Ok(p) if p.exists() => p,
-                _ => return,
-            };
-            (id, p, info)
-        }
+    let (model_id, path, info) = match resolve_selected_model(state) {
+        Some(t) => t,
         None => return,
     };
 
@@ -112,6 +103,185 @@ pub fn try_load_last_model(state: &Arc<AppState>, app_handle: &tauri::AppHandle)
 
     // CoreML encoder backfill — non-blocking. See function comment.
     maybe_backfill_coreml_encoder(app_handle, state.clone(), &info, model_id, path);
+}
+
+/// Resolve the user's `selected_model` to `(id, on-disk path, registry info)`,
+/// or `None` if nothing is selected, the id is unknown, or the file is missing.
+/// Reads only `settings` (rank 1) and drops the guard before returning.
+fn resolve_selected_model(
+    state: &AppState,
+) -> Option<(String, std::path::PathBuf, models::registry::ModelInfo)> {
+    let id = lock_or_recover(&state.settings).selected_model.clone()?;
+    let info = models::registry::find_model(&id)?;
+    let path = models::storage::model_path(&info.filename)
+        .ok()
+        .filter(|p| p.exists())?;
+    Some((id, path, info))
+}
+
+/// Whether the app has a model the user can dictate with — either resident
+/// now, or (under Memory Saver) selected and present on disk so the next
+/// dictation will load it. UI routing keys off this so an idle-unloaded or
+/// not-yet-loaded model doesn't look like "no model configured".
+pub fn has_usable_model(state: &AppState) -> bool {
+    if lock_or_recover(&state.backend).is_some() {
+        return true;
+    }
+    // Backend not resident. Under Memory Saver a configured, on-disk model
+    // still counts — we'll lazily load it on the next Fn press.
+    let (memory_saver, selected) = {
+        let s = lock_or_recover(&state.settings);
+        (s.memory_saver, s.selected_model.clone())
+    };
+    if !memory_saver {
+        return false;
+    }
+    selected
+        .and_then(|id| models::registry::find_model(&id))
+        .and_then(|info| models::storage::model_path(&info.filename).ok())
+        .map(|p| p.exists())
+        .unwrap_or(false)
+}
+
+/// Drop the resident transcription + correction models, returning their RAM
+/// to the OS. Used by the Memory Saver idle-unload watchdog and the
+/// settings toggle. Holds `model_load_lock` (rank 0) for the whole operation
+/// so it can never interleave with a lazy load. `current_model_path` and
+/// `current_correction_model_path` are intentionally kept as breadcrumbs (the
+/// tray's acceleration label reads them) — the heavy `Arc`s are what free the
+/// memory.
+pub fn unload_models(state: &AppState) {
+    let _load = lock_or_recover(&state.model_load_lock);
+
+    let had_model = lock_or_recover(&state.backend).is_some();
+    let had_correction = lock_or_recover(&state.correction_model).is_some();
+
+    *lock_or_recover(&state.backend) = None;
+    // Drop the LlamaModel (weights) BEFORE the LlamaBackend it was created
+    // against, then the backend itself — dropping the backend resets
+    // llama.cpp's global init flag so a later reload can re-init cleanly.
+    *lock_or_recover(&state.correction_model) = None;
+    *lock_or_recover(&state.llama_backend) = None;
+
+    if had_model || had_correction {
+        log::info!(
+            "Memory Saver: unloaded idle models (whisper={}, correction={})",
+            had_model,
+            had_correction
+        );
+    }
+}
+
+/// Return the resident transcription backend, loading the user's selected
+/// model first if it isn't resident (Memory Saver unloaded it, or it was
+/// never eagerly loaded this launch). Returns `None` only when no model is
+/// configured or the load fails.
+///
+/// Synchronous and intended for a blocking context (the `stop_recording`
+/// task) or a background thread (the recording-start preload). Concurrent
+/// callers are serialized by `model_load_lock`; the late caller sees the
+/// backend already populated and returns it without reloading.
+pub fn ensure_backend_loaded(state: &AppState) -> Option<LoadedBackend> {
+    if let Some(b) = lock_or_recover(&state.backend).clone() {
+        return Some(b);
+    }
+
+    let _load = lock_or_recover(&state.model_load_lock);
+    // Re-check under the load lock: another caller may have just loaded it.
+    if let Some(b) = lock_or_recover(&state.backend).clone() {
+        return Some(b);
+    }
+
+    let (model_id, path, _info) = resolve_selected_model(state)?;
+    let (backend, self_test) = match load_with_self_test(&path) {
+        Ok(pair) => pair,
+        Err(e) => {
+            log::error!("Lazy model load failed for {}: {}", model_id, e);
+            return None;
+        }
+    };
+    if let Err(e) = self_test {
+        log::warn!(
+            "Self-test for {} on lazy load returned: {}. Continuing.",
+            model_id,
+            e
+        );
+    }
+
+    *lock_or_recover(&state.backend) = Some(backend.clone());
+    *lock_or_recover(&state.current_model_path) = Some(path);
+    log::info!("Lazy-loaded model: {}", model_id);
+    Some(backend)
+}
+
+/// Ensure the user's selected correction model is resident, loading it if
+/// Memory Saver unloaded it. No-op when none is configured or one is already
+/// loaded. The caller re-reads `llama_backend` / `correction_model` after this.
+///
+/// Mirrors [`try_load_last_correction_model`]'s crash-isolation: the llama.cpp
+/// FFI work runs on a dedicated thread so a C++ exception aborts only that
+/// thread. Serialized against unloads via `model_load_lock`.
+pub fn ensure_correction_loaded(state: &AppState) {
+    if lock_or_recover(&state.correction_model).is_some() {
+        return;
+    }
+
+    let _load = lock_or_recover(&state.model_load_lock);
+    if lock_or_recover(&state.correction_model).is_some() {
+        return;
+    }
+
+    let (model_id, path) = {
+        let id = match lock_or_recover(&state.settings)
+            .selected_correction_model
+            .clone()
+        {
+            Some(id) => id,
+            None => return,
+        };
+        let info = match correction::registry::find_correction_model(&id) {
+            Some(i) => i,
+            None => return,
+        };
+        match models::storage::model_path(&info.filename) {
+            Ok(p) if p.exists() => (id, p),
+            _ => return,
+        }
+    };
+
+    let path_clone = path.clone();
+    let handle = std::thread::Builder::new().name("llm-reload".into()).spawn(
+        move || -> Result<(LlamaBackend, LlamaModel), String> {
+            let backend = LlamaBackend::init()
+                .map_err(|e| format!("Failed to init llama backend: {:?}", e))?;
+            let model = correction::engine::load_correction_model(&backend, &path_clone)
+                .map_err(|e| format!("Failed to load correction model: {}", e))?;
+            Ok((backend, model))
+        },
+    );
+
+    let handle = match handle {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("Failed to spawn llm-reload thread: {}", e);
+            return;
+        }
+    };
+
+    match handle.join() {
+        Ok(Ok((backend, model))) => {
+            *lock_or_recover(&state.llama_backend) = Some(backend);
+            *lock_or_recover(&state.correction_model) = Some(model);
+            *lock_or_recover(&state.current_correction_model_path) = Some(path);
+            log::info!("Lazy-loaded correction model: {}", model_id);
+        }
+        Ok(Err(e)) => {
+            log::error!("Lazy correction load failed for {}: {}", model_id, e);
+        }
+        Err(_) => {
+            log::error!("llm-reload thread crashed while loading {}", model_id);
+        }
+    }
 }
 
 /// If the loaded model's registry entry advertises a CoreML encoder URL
