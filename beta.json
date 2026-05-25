@@ -1,11 +1,11 @@
 {
-  "version": "0.1.23-beta.4",
-  "notes": "- Add --ink-overlay token and apply to PartialCaption text\n- Switch Settings and History windows to native macOS title bar\n- Add voice editing commands feature\n- Add writing samples voice reference to styles\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.22...v0.1.23-beta.4",
-  "pub_date": "2026-05-15T11:39:50Z",
+  "version": "0.1.24-beta.5",
+  "notes": "- chore: upgrade Tauri ecosystem to 2.11.2\n- chore: allow esbuild build scripts in pnpm workspace\n- ci: upgrade Node to 26 in CI and release workflows\n- Migrate package manager from bun to pnpm\n- Migrate to pnpm and bump all frontend dependencies\n- Replace enigo with direct CGEvent API for Cmd+V simulation\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.23...v0.1.24-beta.5",
+  "pub_date": "2026-05-25T08:02:20Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkyb3k2bFA5a1h3Unl2cmNzbkl5MXJFTks1WVZKZU4raENrMndscDlUdUJGMUFtOU8yNzhrQktBNXpyVVJkajZYTEdZQ21iYTMwYXhCVjR0MUl6S0NEQmdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc4ODQ1MTMzCWZpbGU6TWFncGllLmFwcC50YXIuZ3oKQmVkeGFXcmhFNDlZRzMyTGI3WFQ0Sk5hb01wMUtNakFwcFlncklGVXNhdFdFVURmYzZCSGxtWkpVeWpVdHNtQXJ1WjdFcjdtclE2bXBjcWl0ZUdLRHc9PQo=",
-      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.23-beta.4/Magpie.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzBVTXQrUzV5Q1ZqUW9RTnFhQlFKWmJvSVc3YkZCbE4wNHhCN01lVG1XbXFHZGVkcGV3elNLdGdiSk54ZUMrbHY3MVB2V3Z6a3dsYzRvTHhHTy9ES0FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Njk2MDg1CWZpbGU6TWFncGllLmFwcC50YXIuZ3oKajZMSmgycHZQM3FBZ1k5L0Y2V0x2dXlyUW94aFY2cmd0amZ4dmYrVHNmQmRqWnM3MlNpSEh2ZVZ5WDQ0LzFnZXF5dFRWUWFmZEljR2JYNktXTDRBQ1E9PQo=",
+      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.24-beta.5/Magpie.app.tar.gz"
     }
   }
 }
