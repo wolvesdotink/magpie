@@ -251,8 +251,8 @@ pub fn correct_transcription_with_prompt(
 
     let ctx_params = LlamaContextParams::default()
         .with_n_ctx(NonZeroU32::new(2048))
-        .with_n_threads(constants::DEFAULT_LLM_THREADS)
-        .with_n_threads_batch(constants::DEFAULT_LLM_THREADS);
+        .with_n_threads(constants::llm_threads())
+        .with_n_threads_batch(constants::llm_threads());
 
     let mut ctx = model
         .new_context(backend, ctx_params)

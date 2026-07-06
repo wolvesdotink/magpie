@@ -4,8 +4,54 @@ pub const WHISPER_SAMPLE_RATE: u32 = 16_000;
 /// Delay before restoring clipboard after paste (ms)
 pub const CLIPBOARD_RESTORE_DELAY_MS: u64 = 150;
 
-/// Default number of threads for whisper inference
-pub const DEFAULT_WHISPER_THREADS: i32 = 4;
+/// Threads for whisper inference. Detected once per process: the macOS
+/// performance-core count (`hw.perflevel0.physicalcpu`), falling back to the
+/// physical core count elsewhere, clamped to [2, 8]. Efficiency cores slow a
+/// ggml thread pool down (the pool runs at the pace of its slowest member),
+/// and whisper.cpp scales poorly past ~8 threads, hence the cap.
+pub fn whisper_threads() -> i32 {
+    inference_threads()
+}
+
+/// Threads for LLM (self-correction) inference. Same detection as
+/// [`whisper_threads`]; correction runs are short and latency-bound, so they
+/// get the full performance-core pool too.
+pub fn llm_threads() -> i32 {
+    inference_threads()
+}
+
+fn inference_threads() -> i32 {
+    static THREADS: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
+    *THREADS.get_or_init(|| {
+        let physical = performance_cores().unwrap_or_else(num_cpus::get_physical);
+        let threads = (physical as i32).clamp(2, 8);
+        log::info!(
+            "Inference thread pool: {threads} threads ({physical} performance/physical cores detected)"
+        );
+        threads
+    })
+}
+
+/// Performance-core count on Apple Silicon. `num_cpus::get_physical` counts
+/// efficiency cores too (e.g. 10 on an 8P+2E M1 Pro), which overcommits the
+/// ggml pool, so prefer the perflevel0 sysctl. Runs once, behind the
+/// `inference_threads` OnceLock.
+#[cfg(target_os = "macos")]
+fn performance_cores() -> Option<usize> {
+    let out = std::process::Command::new("sysctl")
+        .args(["-n", "hw.perflevel0.physicalcpu"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8(out.stdout).ok()?.trim().parse().ok()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn performance_cores() -> Option<usize> {
+    None
+}
 
 /// Model download base URL (HuggingFace)
 pub const MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
@@ -16,9 +62,6 @@ pub const DISTIL_WHISPER_SMALL_EN_BASE: &str =
     "https://huggingface.co/distil-whisper/distil-small.en/resolve/main";
 pub const DISTIL_WHISPER_LARGE_V3_BASE: &str =
     "https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main";
-
-/// Default number of threads for LLM inference
-pub const DEFAULT_LLM_THREADS: i32 = 4;
 
 /// Maximum allowed output/input length ratio for correction validation
 pub const CORRECTION_MAX_OUTPUT_MULTIPLIER: f32 = 2.0;

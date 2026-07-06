@@ -11,7 +11,7 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-use crate::constants::{DEFAULT_WHISPER_THREADS, WHISPER_SAMPLE_RATE};
+use crate::constants::{whisper_threads, WHISPER_SAMPLE_RATE};
 
 use super::backend::{
     BackendCapabilities, CancellationToken, TranscribeError, TranscribeMode, TranscribeOptions,
@@ -188,7 +188,7 @@ impl TranscriptionBackend for WhisperBackend {
 
         match opts.mode {
             TranscribeMode::Final => {
-                params.set_n_threads(DEFAULT_WHISPER_THREADS);
+                params.set_n_threads(whisper_threads());
                 params.set_suppress_blank(true);
                 params.set_suppress_non_speech_tokens(true);
                 params.set_no_timestamps(true);
@@ -209,7 +209,7 @@ impl TranscriptionBackend for WhisperBackend {
                 // multiple times, no_context so a stale partial doesn't bias the
                 // next one. Skip the initial_prompt — re-injecting vocab on every
                 // 1.5s tick wastes prompt tokens for no quality gain in a preview.
-                let partial_threads = (DEFAULT_WHISPER_THREADS / 2).max(2);
+                let partial_threads = (whisper_threads() / 2).max(2);
                 params.set_n_threads(partial_threads);
                 params.set_suppress_blank(true);
                 params.set_suppress_non_speech_tokens(false);
