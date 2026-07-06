@@ -205,7 +205,12 @@ pub fn load_correction_model(backend: &LlamaBackend, path: &Path) -> Result<Llam
     log::info!("GPU offload supported: {}", backend.supports_gpu_offload());
     log::info!("mmap supported: {}", backend.supports_mmap());
 
-    let params = LlamaModelParams::default().with_n_gpu_layers(0);
+    // Offload every layer to Metal. The correction models are small (0.5–3 GB)
+    // and latency-bound; keeping them on the GPU cuts the per-utterance
+    // correction pause by several times vs. CPU-only decode. 1000 exceeds any
+    // model we ship, so it means "all layers". llama.cpp falls back to CPU
+    // cleanly when no Metal device is available.
+    let params = LlamaModelParams::default().with_n_gpu_layers(1000);
     let model = LlamaModel::load_from_file(backend, path, &params).map_err(|e| {
         CorrectionError::ModelLoad {
             path: path.to_path_buf(),
