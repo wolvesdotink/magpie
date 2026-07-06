@@ -52,14 +52,27 @@ impl AudioRingBuffer {
     }
 
     /// Append `samples`, dropping oldest content if the capacity is full.
+    ///
+    /// Runs inside the real-time cpal callback (under the `audio_buffer`
+    /// mutex), so eviction is a single bulk `drain` + `extend` rather than
+    /// a per-sample pop/push loop.
     pub fn push_slice(&mut self, samples: &[f32]) {
-        for &s in samples {
-            if self.data.len() == self.capacity {
-                self.data.pop_front();
-                self.overflowed = true;
-            }
-            self.data.push_back(s);
+        // A slice larger than the whole buffer: only its tail can survive.
+        // The discarded head counts as overflow just like evicted content.
+        let src = if samples.len() > self.capacity {
+            self.overflowed = true;
+            &samples[samples.len() - self.capacity..]
+        } else {
+            samples
+        };
+        // Evict exactly as many of the oldest samples as the new content
+        // needs, in one drain.
+        let overflow = (self.data.len() + src.len()).saturating_sub(self.capacity);
+        if overflow > 0 {
+            self.data.drain(..overflow);
+            self.overflowed = true;
         }
+        self.data.extend(src.iter().copied());
         self.samples_written = self.samples_written.saturating_add(samples.len() as u64);
     }
 
@@ -129,6 +142,40 @@ mod tests {
         assert_eq!(r.snapshot(), vec![3.0, 4.0, 5.0, 6.0]);
         assert!(r.has_overflowed());
         assert_eq!(r.samples_written(), 6);
+    }
+
+    #[test]
+    fn push_larger_than_capacity_keeps_tail() {
+        let mut r = AudioRingBuffer::with_capacity(3);
+        r.push_slice(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(r.len(), 3);
+        assert_eq!(r.snapshot(), vec![3.0, 4.0, 5.0]);
+        assert!(r.has_overflowed());
+        // samples_written counts everything pushed, including the dropped head.
+        assert_eq!(r.samples_written(), 5);
+    }
+
+    #[test]
+    fn oversized_push_into_partially_filled_buffer_keeps_tail() {
+        let mut r = AudioRingBuffer::with_capacity(3);
+        r.push_slice(&[1.0]);
+        r.push_slice(&[2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(r.snapshot(), vec![3.0, 4.0, 5.0]);
+        assert!(r.has_overflowed());
+        assert_eq!(r.samples_written(), 5);
+    }
+
+    #[test]
+    fn exact_capacity_fill_does_not_overflow() {
+        let mut r = AudioRingBuffer::with_capacity(4);
+        r.push_slice(&[1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(r.len(), 4);
+        assert_eq!(r.snapshot(), vec![1.0, 2.0, 3.0, 4.0]);
+        assert!(!r.has_overflowed());
+        // One more sample past the exact fill is what trips overflow.
+        r.push_slice(&[5.0]);
+        assert_eq!(r.snapshot(), vec![2.0, 3.0, 4.0, 5.0]);
+        assert!(r.has_overflowed());
     }
 
     #[test]
