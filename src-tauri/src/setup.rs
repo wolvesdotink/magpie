@@ -6,7 +6,8 @@
 //!   - Tray + overlay window setup
 //!   - Settings-window transparency
 //!   - Stale-download cleanup
-//!   - Whisper + correction model auto-load (delegated to model_loading)
+//!   - Whisper + correction model auto-load (delegated to model_loading,
+//!     run on a background task so setup returns immediately)
 //!   - launch-at-login reconciliation
 //!   - First-launch window-show logic
 //!   - Recording-command mpsc channel + consumer task
@@ -68,14 +69,61 @@ pub(crate) fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::
     let state = app.state::<Arc<AppState>>();
     // Memory Saver defers model loading to the first dictation so an idle
     // Magpie starts (and stays) at a small footprint. Otherwise eagerly load
-    // the last-used models for instant-on dictation.
+    // the last-used models for instant-on dictation — in the background, so
+    // setup returns (and the tray/window appear) without waiting out the
+    // multi-second whisper + llama FFI loads. The load functions already run
+    // the FFI work on dedicated threads for crash isolation; spawn_blocking
+    // just keeps the join off the setup path (same idiom as the
+    // recording-start preload in commands/recording.rs).
     let memory_saver = lock_or_recover(&state.settings).memory_saver;
     if memory_saver {
         log::info!("Memory Saver enabled — deferring model load until first dictation");
-    } else {
-        try_load_last_model(&state, app.handle());
-        try_load_last_correction_model(&state);
     }
+    let load_state = state.inner().clone();
+    let load_app = app.handle().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if !memory_saver {
+            // Serialize with a lazy load raced by an early hotkey press:
+            // ensure_backend_loaded takes model_load_lock (rank 0) before
+            // loading, so whichever side wins the lock performs the load and
+            // the other blocks, then sees the resident model and skips.
+            let _load = lock_or_recover(&load_state.model_load_lock);
+            if lock_or_recover(&load_state.backend).is_none() {
+                try_load_last_model(&load_state, &load_app);
+            }
+            if lock_or_recover(&load_state.correction_model).is_none() {
+                try_load_last_correction_model(&load_state);
+            }
+        }
+
+        // Show the main window on startup if anything blocks normal
+        // operation: no model loaded, or any of the three required
+        // permissions revoked. App.vue routes to the permissions guide when
+        // any perm is missing, so surfacing the window is enough — without
+        // this, a returning user who revoked a permission would press Fn and
+        // get no signal. Runs after the eager load settles so
+        // has_usable_model sees the loaded backend, matching the order the
+        // synchronous setup path used to guarantee.
+        let has_model = crate::model_loading::has_usable_model(&load_state);
+        let perms = commands::check_permissions();
+        let missing_perms = !perms.microphone || !perms.accessibility || !perms.input_monitoring;
+        if !has_model || missing_perms {
+            if !has_model {
+                log::info!("No model loaded — showing setup window");
+            } else {
+                log::info!(
+                    "Missing permissions on startup (mic={}, accessibility={}, input_monitoring={}) — showing window",
+                    perms.microphone,
+                    perms.accessibility,
+                    perms.input_monitoring,
+                );
+            }
+            if let Some(window) = load_app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+    });
 
     // Reconcile launch-at-login: settings.json is authoritative for intent,
     // but System Settings → Login Items is authoritative for OS state. If
@@ -99,33 +147,6 @@ pub(crate) fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::
             let mut s = lock_or_recover(&state.settings);
             s.auto_start = actual_enabled;
             let _ = s.save();
-        }
-    }
-
-    // Show the main window on startup if anything blocks normal operation:
-    // no model loaded, or any of the three required permissions revoked.
-    // App.vue routes to the permissions guide when any perm is missing, so
-    // surfacing the window is enough — without this, a returning user who
-    // revoked a permission would press Fn and get no signal.
-    {
-        let has_model = crate::model_loading::has_usable_model(&state);
-        let perms = commands::check_permissions();
-        let missing_perms = !perms.microphone || !perms.accessibility || !perms.input_monitoring;
-        if !has_model || missing_perms {
-            if !has_model {
-                log::info!("No model loaded — showing setup window");
-            } else {
-                log::info!(
-                    "Missing permissions on startup (mic={}, accessibility={}, input_monitoring={}) — showing window",
-                    perms.microphone,
-                    perms.accessibility,
-                    perms.input_monitoring,
-                );
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
         }
     }
 
