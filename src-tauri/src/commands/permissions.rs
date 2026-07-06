@@ -4,7 +4,9 @@
 //! `PermissionsGuide` view invokes. The "open settings" variants flip
 //! `state.suppress_hide` so that the next window-focus-lost event (caused
 //! by System Preferences taking focus) doesn't hide the main popover —
-//! otherwise the user would lose track of where they were.
+//! otherwise the user would lose track of where they were. The "request"
+//! variants do the same: the TCC consent dialog they trigger steals focus
+//! exactly like System Preferences does.
 
 use std::sync::Arc;
 
@@ -25,7 +27,10 @@ pub fn check_permissions() -> PermissionsPayload {
 }
 
 #[tauri::command]
-pub fn request_microphone_permission() -> bool {
+pub fn request_microphone_permission(state: State<'_, Arc<AppState>>) -> bool {
+    state
+        .suppress_hide
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     crate::permissions::request_microphone_access()
 }
 
@@ -50,7 +55,10 @@ pub fn open_accessibility_settings(state: State<'_, Arc<AppState>>) -> Result<()
 /// Monitoring so the toggle becomes available. After the user grants it,
 /// the Fn key monitor must be restarted to pick up the new permission.
 #[tauri::command]
-pub fn request_input_monitoring_permission() -> bool {
+pub fn request_input_monitoring_permission(state: State<'_, Arc<AppState>>) -> bool {
+    state
+        .suppress_hide
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     crate::permissions::request_input_monitoring_access()
 }
 
