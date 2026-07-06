@@ -1,11 +1,11 @@
 {
-  "version": "0.1.24-beta.5",
-  "notes": "- chore: upgrade Tauri ecosystem to 2.11.2\n- chore: allow esbuild build scripts in pnpm workspace\n- ci: upgrade Node to 26 in CI and release workflows\n- Migrate package manager from bun to pnpm\n- Migrate to pnpm and bump all frontend dependencies\n- Replace enigo with direct CGEvent API for Cmd+V simulation\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.23...v0.1.24-beta.5",
-  "pub_date": "2026-05-25T08:02:20Z",
+  "version": "0.2.0-beta.1",
+  "notes": "- fix: keep permissions panel open through TCC consent dialogs\n- fix: make permissions panel scrollable\n- fix: keyless local builds no longer fail on updater artifact\n- Make streaming preview incremental with a bounded decode window\n- Move startup model loading off the setup path\n- Replace per-sample loop with bulk drain/extend in audio ring buffer\n- feat: add Qwen3.5 correction models\n- perf: enable whisper flash attention on the GPU path\n- chore: upgrade whisper-rs to 0.16, llama-cpp-2 to 0.1.146\n- perf: offload correction model layers to Metal\n- perf: scale inference thread counts to performance cores\n\n**Full changelog:** https://github.com/wolvesdotink/magpie/compare/v0.1.24...v0.2.0-beta.1",
+  "pub_date": "2026-07-06T15:46:17Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybzBVTXQrUzV5Q1ZqUW9RTnFhQlFKWmJvSVc3YkZCbE4wNHhCN01lVG1XbXFHZGVkcGV3elNLdGdiSk54ZUMrbHY3MVB2V3Z6a3dsYzRvTHhHTy9ES0FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5Njk2MDg1CWZpbGU6TWFncGllLmFwcC50YXIuZ3oKajZMSmgycHZQM3FBZ1k5L0Y2V0x2dXlyUW94aFY2cmd0amZ4dmYrVHNmQmRqWnM3MlNpSEh2ZVZ5WDQ0LzFnZXF5dFRWUWFmZEljR2JYNktXTDRBQ1E9PQo=",
-      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.1.24-beta.5/Magpie.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTZXA1SFJUTVkybys1Lzl5blVMd1dSWlBCTTNjR1R0WDVqZFpLWjM3UGdZVzlJWDJKbXJBQ3R1T29kaHN6QThFMStRbnFoZVp3WVdwdkxVdndIYzFUZzc4UTFXUWUrNlFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMzUyNzA2CWZpbGU6TWFncGllLmFwcC50YXIuZ3oKR3c0d29CMEpWUG9DZW9FdmRzejdBWTJIcHJNYmgvTVNWZ1VYYWxQbzJmVEZSRkNRRDhWYlkzZ3dqekM3dlpTT2ROMk9uMkxRYnFIK21mSUFNckhHREE9PQo=",
+      "url": "https://github.com/wolvesdotink/magpie/releases/download/v0.2.0-beta.1/Magpie.app.tar.gz"
     }
   }
 }
