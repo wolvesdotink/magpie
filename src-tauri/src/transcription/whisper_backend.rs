@@ -190,7 +190,7 @@ impl TranscriptionBackend for WhisperBackend {
             TranscribeMode::Final => {
                 params.set_n_threads(whisper_threads());
                 params.set_suppress_blank(true);
-                params.set_suppress_non_speech_tokens(true);
+                params.set_suppress_nst(true);
                 params.set_no_timestamps(true);
                 params.set_single_segment(false);
                 if let Some(prompt) = opts.initial_prompt {
@@ -212,7 +212,7 @@ impl TranscriptionBackend for WhisperBackend {
                 let partial_threads = (whisper_threads() / 2).max(2);
                 params.set_n_threads(partial_threads);
                 params.set_suppress_blank(true);
-                params.set_suppress_non_speech_tokens(false);
+                params.set_suppress_nst(false);
                 params.set_no_timestamps(true);
                 params.set_single_segment(true);
                 params.set_no_context(true);
@@ -245,13 +245,13 @@ impl TranscriptionBackend for WhisperBackend {
 
         // Collect text from segments. If we were aborted mid-pass, segments
         // may be empty or partial — return whatever accumulated.
-        let num_segments = state
-            .full_n_segments()
-            .map_err(|e| anyhow::anyhow!("Failed to get segment count: {:?}", e))?;
+        let num_segments = state.full_n_segments();
         let mut text = String::new();
         for i in 0..num_segments {
-            if let Ok(segment_text) = state.full_get_segment_text(i) {
-                text.push_str(&segment_text);
+            if let Some(segment) = state.get_segment(i) {
+                if let Ok(segment_text) = segment.to_str_lossy() {
+                    text.push_str(&segment_text);
+                }
             }
         }
 

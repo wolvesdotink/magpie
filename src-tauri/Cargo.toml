@@ -46,14 +46,25 @@ hound = "3.5"
 # coreml: load a sibling `<model>-encoder.mlmodelc` package and run the
 # encoder on the Apple Neural Engine. Both are no-ops on non-Apple hosts,
 # so we keep them on for the only platform we ship to today.
-whisper-rs = { version = "0.13", features = ["metal", "coreml"] }
+whisper-rs = { version = "0.16", features = ["metal", "coreml"] }
 
 # LLM (self-correction)
 # dynamic-link: builds llama.cpp as a separate dylib so its ggml symbols
 # don't collide with the ggml symbols from whisper-rs-sys (which are statically
 # linked). Without this, 472+ duplicate ggml_* symbols cause the linker to
 # resolve one version for both crates, producing memory corruption at runtime.
-llama-cpp-2 = { version = "0.1.141", features = ["dynamic-link"] }
+# Pinned to =0.1.146: 0.1.147+ force-enables llama-cpp-sys-2's `common`
+# feature (the crate omits default-features = false on its sys dependency, so
+# it cannot be turned off downstream). `common` builds llama.cpp's common
+# library, whose cpp-httplib links OpenSSL — that fails at link time on dev
+# machines and would make the shipped dylib depend on Homebrew OpenSSL.
+# 0.1.146 bundles a 2026-04-30 llama.cpp (qwen3.5 + gemma4 supported). Bump
+# past 0.1.146 only once upstream makes `common` optional again.
+llama-cpp-2 = { version = "=0.1.146", features = ["dynamic-link"] }
+# Direct pin of the sys crate too: llama-cpp-2 0.1.146 declares it as
+# ^0.1.146, which would otherwise resolve to 0.1.147+ and re-enable the
+# force-on `common` feature described above.
+llama-cpp-sys-2 = "=0.1.146"
 
 # Text output
 arboard = "3"
