@@ -101,6 +101,12 @@ impl WhisperBackend {
             log::warn!("MAGPIE_DISABLE_COREML set — disabling GPU acceleration (CPU only)");
             params.use_gpu = false;
         }
+        // Flash attention meaningfully speeds up the Metal decode path. Its
+        // only documented conflict is DTW token-level timestamps, which we
+        // never request. Tied to use_gpu: the CPU fallback path doesn't
+        // benefit and is the escape hatch for encoder trouble, so keep it
+        // as vanilla as possible.
+        params.flash_attn = params.use_gpu;
         let ctx = WhisperContext::new_with_params(
             model_path.to_str().context("Invalid model path")?,
             params,
