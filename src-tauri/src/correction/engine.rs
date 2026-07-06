@@ -249,9 +249,22 @@ pub fn correct_transcription_with_prompt(
         return Ok(text.to_string());
     }
 
+    // Hybrid thinking models (Qwen3/Qwen3.5) emit a reasoning block before
+    // the answer unless the assistant turn is pre-filled with an empty
+    // `<think>` block — their chat template does this when thinking is
+    // disabled, and we build ChatML by hand, so mirror it. Our tight
+    // max_new_tokens budget leaves no room for reasoning tokens. Detected
+    // from the vocabulary: on a thinking model "<think>" parses to a single
+    // special token (str_to_token tokenizes with parse_special), on Qwen2.5
+    // it splits into several text tokens.
+    let assistant_prefill = match model.str_to_token("<think>", llama_cpp_2::model::AddBos::Never) {
+        Ok(tokens) if tokens.len() == 1 => "<think>\n\n</think>\n\n",
+        _ => "",
+    };
+
     let prompt = format!(
-        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}{}<|im_end|>\n<|im_start|>assistant\n",
-        trimmed, USER_PROMPT_PREFIX, text
+        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}{}<|im_end|>\n<|im_start|>assistant\n{}",
+        trimmed, USER_PROMPT_PREFIX, text, assistant_prefill
     );
 
     let ctx_params = LlamaContextParams::default()
