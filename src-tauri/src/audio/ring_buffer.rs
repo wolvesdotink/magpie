@@ -111,6 +111,31 @@ impl AudioRingBuffer {
         out
     }
 
+    /// Copy the samples at or after absolute stream position `from` (in
+    /// [`samples_written`](Self::samples_written) units) in chronological
+    /// order, returning them together with the absolute position of the
+    /// first returned sample. That position equals `from` in the normal
+    /// case; it is greater when the requested range was already evicted by
+    /// overflow (caller fell behind by more than the capacity), and clamps
+    /// to `samples_written` (empty result) if `from` is in the future.
+    ///
+    /// The streaming worker uses this to fetch only the audio that arrived
+    /// since its previous tick instead of re-snapshotting the whole buffer.
+    pub fn snapshot_from(&self, from: u64) -> (Vec<f32>, u64) {
+        let oldest = self.samples_written - self.data.len() as u64;
+        let start = from.clamp(oldest, self.samples_written);
+        let skip = (start - oldest) as usize;
+        let (a, b) = self.data.as_slices();
+        let mut out = Vec::with_capacity(self.data.len() - skip);
+        if skip < a.len() {
+            out.extend_from_slice(&a[skip..]);
+            out.extend_from_slice(b);
+        } else {
+            out.extend_from_slice(&b[skip - a.len()..]);
+        }
+        (out, start)
+    }
+
     /// Reset for a new recording. The underlying allocation is retained.
     pub fn clear(&mut self) {
         self.data.clear();
@@ -218,6 +243,74 @@ mod tests {
         r.push_slice(&[3.0]);
         r.push_slice(&[4.0, 5.0]);
         assert_eq!(r.snapshot(), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn snapshot_from_zero_equals_full_snapshot() {
+        let mut r = AudioRingBuffer::with_capacity(10);
+        r.push_slice(&[1.0, 2.0, 3.0, 4.0]);
+        let (samples, start) = r.snapshot_from(0);
+        assert_eq!(samples, r.snapshot());
+        assert_eq!(start, 0);
+    }
+
+    #[test]
+    fn snapshot_from_mid_buffer_returns_suffix() {
+        let mut r = AudioRingBuffer::with_capacity(10);
+        r.push_slice(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let (samples, start) = r.snapshot_from(3);
+        assert_eq!(samples, vec![4.0, 5.0]);
+        assert_eq!(start, 3);
+    }
+
+    #[test]
+    fn snapshot_from_current_position_is_empty() {
+        let mut r = AudioRingBuffer::with_capacity(10);
+        r.push_slice(&[1.0, 2.0, 3.0]);
+        let (samples, start) = r.snapshot_from(3);
+        assert!(samples.is_empty());
+        assert_eq!(start, 3);
+    }
+
+    #[test]
+    fn snapshot_from_future_position_clamps_to_written() {
+        let mut r = AudioRingBuffer::with_capacity(10);
+        r.push_slice(&[1.0, 2.0]);
+        let (samples, start) = r.snapshot_from(99);
+        assert!(samples.is_empty());
+        assert_eq!(start, 2);
+    }
+
+    #[test]
+    fn snapshot_from_evicted_position_clamps_to_oldest() {
+        // Capacity 4, 7 written: positions 0..3 are gone; a cursor at 1
+        // gets the oldest retained sample (position 3) and reports it.
+        let mut r = AudioRingBuffer::with_capacity(4);
+        r.push_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]);
+        let (samples, start) = r.snapshot_from(1);
+        assert_eq!(samples, vec![4.0, 5.0, 6.0, 7.0]);
+        assert_eq!(start, 3);
+    }
+
+    #[test]
+    fn snapshot_from_tracks_incremental_reads_across_wraps() {
+        // Simulate the streaming worker's cursor: read everything new after
+        // each push, across enough pushes to wrap the buffer several times.
+        // The concatenated reads must equal the full stream (nothing
+        // duplicated, nothing skipped) as long as the cursor keeps up.
+        let mut r = AudioRingBuffer::with_capacity(5);
+        let mut cursor: u64 = 0;
+        let mut collected = Vec::new();
+        for i in 0..20 {
+            r.push_slice(&[i as f32, i as f32 + 0.5]);
+            let (samples, start) = r.snapshot_from(cursor);
+            assert_eq!(start, cursor, "cursor kept up; nothing evicted");
+            cursor = start + samples.len() as u64;
+            collected.extend(samples);
+        }
+        let expected: Vec<f32> = (0..20).flat_map(|i| [i as f32, i as f32 + 0.5]).collect();
+        assert_eq!(collected, expected);
+        assert_eq!(cursor, r.samples_written());
     }
 
     #[test]

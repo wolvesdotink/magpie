@@ -1,6 +1,13 @@
 /// Whisper sample rate requirement
 pub const WHISPER_SAMPLE_RATE: u32 = 16_000;
 
+/// Streaming preview decodes only the trailing window of audio, in seconds.
+/// The live caption is transient UI text that only ever shows the most
+/// recent phrases, so a sliding window keeps each partial decode
+/// O(window) instead of O(recording length). The final on-stop pass still
+/// transcribes the full clip.
+pub const PARTIAL_WINDOW_SECS: usize = 12;
+
 /// Delay before restoring clipboard after paste (ms)
 pub const CLIPBOARD_RESTORE_DELAY_MS: u64 = 150;
 
