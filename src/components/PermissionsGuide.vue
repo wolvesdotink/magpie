@@ -126,7 +126,7 @@ async function recheckPermissions() {
   >
     <div class="h-[1.5px] bg-gradient-to-r from-transparent via-gold/40 to-transparent" />
 
-    <div class="flex flex-col items-center px-6 pt-8 pb-6 gap-4 flex-1">
+    <div class="flex flex-col items-center px-6 pt-8 pb-6 gap-4 flex-1 min-h-0 overflow-y-auto">
       <div
         class="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-gold/15 to-gold/5 text-gold shadow-glow-gold"
       >
