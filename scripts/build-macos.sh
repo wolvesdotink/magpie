@@ -163,6 +163,16 @@ if $UNIVERSAL; then
     BUILD_CMD+=(--target universal-apple-darwin)
 fi
 
+# `createUpdaterArtifacts` in tauri.conf.json makes `tauri build` produce and
+# sign the updater .tar.gz during the build itself, which hard-fails without
+# TAURI_SIGNING_PRIVATE_KEY. Keyless local builds (the README's plain
+# `pnpm run build:mac`) don't need that artifact — and the --updater flow
+# signs it explicitly in Phase 7 anyway — so skip it when no key is present.
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+    log "TAURI_SIGNING_PRIVATE_KEY not set — skipping in-build updater artifact"
+    BUILD_CMD+=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+fi
+
 if [[ ${#BUILD_FLAGS[@]} -gt 0 ]]; then
     BUILD_CMD+=("${BUILD_FLAGS[@]}")
 fi
