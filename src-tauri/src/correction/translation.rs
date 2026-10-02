@@ -40,7 +40,11 @@ pub fn chunks(text: &str, max_chars: usize) -> Vec<&str> {
     let mut remaining = text;
     let mut result = Vec::new();
     while remaining.chars().count() > max_chars {
-        let limit = remaining.char_indices().nth(max_chars).unwrap().0;
+        let limit = remaining
+            .char_indices()
+            .nth(max_chars)
+            .expect("invariant: remaining exceeds the character limit")
+            .0;
         let candidate = &remaining[..limit];
         let split = candidate
             .char_indices()

@@ -111,7 +111,7 @@ pub fn update_settings(
     {
         let mut hist = lock_or_recover(&state.history);
         if new_disabled {
-            if hist.len() > 0 {
+            if !hist.is_empty() {
                 hist.clear();
                 if let Err(e) = hist.save() {
                     log::warn!("Failed to save cleared history after disable: {}", e);
