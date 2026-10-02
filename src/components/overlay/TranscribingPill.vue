@@ -5,6 +5,7 @@ const props = defineProps<{
   /** True while the LLM correction pass is running (vs. the raw whisper
    *  decode). Just swaps the label text — visuals are identical. */
   correcting: boolean;
+  translating?: boolean;
   /** True while a Memory Saver lazy model load is in flight, before the
    *  decode starts. Shows "Preparing model" and takes precedence over the
    *  transcribing/correcting labels. */
@@ -16,7 +17,13 @@ const props = defineProps<{
 }>();
 
 const label = computed(() =>
-  props.loading ? 'Preparing model' : props.correcting ? 'Cleaning up' : 'Transcribing',
+  props.loading
+    ? 'Preparing model'
+    : props.translating
+      ? 'Translating'
+      : props.correcting
+        ? 'Cleaning up'
+        : 'Transcribing',
 );
 
 // ── Label → typing-dots swap ──
@@ -24,7 +31,7 @@ const showLabel = ref(true);
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 watch(
-  () => props.generation,
+  () => [props.generation, label.value],
   () => {
     if (timer) clearTimeout(timer);
     showLabel.value = true;

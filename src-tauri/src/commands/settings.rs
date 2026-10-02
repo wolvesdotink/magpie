@@ -38,6 +38,9 @@ pub fn update_settings(
     state: State<'_, Arc<AppState>>,
     mut settings: crate::settings::UserSettings,
 ) {
+    settings.translation_language = settings
+        .translation_language
+        .filter(|code| crate::correction::translation::language_name(code).is_some());
     // History-disabled state is computed BEFORE the clamp so that a
     // payload of `history_max_entries == 0` is still recognised as
     // "disabled" — the clamp would otherwise rewrite it to MIN_ENTRIES
@@ -108,7 +111,7 @@ pub fn update_settings(
     {
         let mut hist = lock_or_recover(&state.history);
         if new_disabled {
-            if hist.len() > 0 {
+            if !hist.is_empty() {
                 hist.clear();
                 if let Err(e) = hist.save() {
                     log::warn!("Failed to save cleared history after disable: {}", e);

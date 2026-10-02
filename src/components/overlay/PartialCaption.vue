@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue';
+import { captionUpdate } from '@/lib/captions';
 
 // Live-caption pill rendered above the recording pill while the streaming
 // worker emits partials. Each call to `text` is the latest cumulative
@@ -41,13 +42,6 @@ function getMaxWidthPx(el: HTMLElement): number {
 
 function splitWords(s: string): string[] {
   return s.trim().split(/\s+/).filter(Boolean);
-}
-
-function commonPrefixCount(a: string[], b: string[]): number {
-  const max = Math.min(a.length, b.length);
-  let n = 0;
-  while (n < max && a[n] === b[n]) n++;
-  return n;
 }
 
 // Replace `slot` contents with one `<span class="caption-word">` per word.
@@ -109,7 +103,7 @@ function animateNewWords(slot: HTMLElement, keepCount: number) {
   void slot.offsetHeight;
   spans.forEach((span, i) => {
     if (i < keepCount) return;
-    const delay = (i - keepCount) * WORD_STAGGER_MS;
+    const delay = Math.min((i - keepCount) * WORD_STAGGER_MS, 120);
     span.style.transition =
       `opacity ${WORD_DURATION_MS}ms ${WORD_EASING} ${delay}ms,` +
       `transform ${WORD_DURATION_MS}ms ${WORD_EASING} ${delay}ms,` +
@@ -149,30 +143,11 @@ watch(
 
     const newFullWords = splitWords(newText);
     const prevFullWords = splitWords(previousFullText);
-    const commonFull = commonPrefixCount(prevFullWords, newFullWords);
-
-    // Pure append vs. revision. If whisper revised words it had previously
-    // emitted (commonFull < prevFullWords.length), drop everything from the
-    // common point forward and re-render. Otherwise, extend the currently
-    // displayed text with the newly-arrived words.
-    let proposedWords: string[];
-    let keep: number;
-    if (commonFull < prevFullWords.length) {
-      proposedWords = newFullWords.slice(commonFull);
-      keep = 0;
-    } else {
-      const displayedWords = splitWords(displayedText);
-      const addedWords = newFullWords.slice(commonFull);
-      proposedWords = [...displayedWords, ...addedWords];
-      keep = displayedWords.length;
-    }
-
-    // Words newly arrived from whisper this update — the candidates to
-    // keep after an overflow-driven reset (clear the pill, show only what's
-    // new). Computed up front so the closure below can capture a stable
-    // value.
-    const tailWords = newFullWords.slice(commonFull);
-
+    const { words: proposedWords, keep } = captionUpdate(
+      prevFullWords,
+      splitWords(displayedText),
+      newFullWords,
+    );
     let finalKeep = keep;
     let finalText = proposedWords.join(' ');
 
@@ -183,10 +158,11 @@ watch(
       // width breaches max-width, clear the slot and render only the
       // freshly-arrived words from this update.
       const maxW = getMaxWidthPx(pill);
-      if (pill.offsetWidth > maxW && tailWords.length > 0) {
-        finalText = tailWords.join(' ');
+      while (pill.scrollWidth > maxW && proposedWords.length > 1) {
+        proposedWords.shift();
+        finalText = proposedWords.join(' ');
         renderWords(slot, finalText, false);
-        finalKeep = 0;
+        finalKeep = Math.max(0, finalKeep - 1);
       }
     });
     animateNewWords(slot, finalKeep);
@@ -198,7 +174,7 @@ watch(
 </script>
 
 <template>
-  <div ref="pillRef" class="partial-caption">
+  <div ref="pillRef" class="partial-caption" dir="auto" :aria-label="text">
     <span ref="slotRef" class="caption-slot"></span>
   </div>
 </template>

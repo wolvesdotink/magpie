@@ -337,7 +337,13 @@ fn maybe_backfill_coreml_encoder(
         // recovery is automatic across restarts.
         const BACKOFF_SECS: &[u64] = &[30, 120];
         let mut last_err: Option<crate::models::ModelError> = None;
-        for attempt in 0..=BACKOFF_SECS.len() {
+        for (attempt, backoff) in BACKOFF_SECS
+            .iter()
+            .copied()
+            .map(Some)
+            .chain(std::iter::once(None))
+            .enumerate()
+        {
             match models::downloader::download_encoder_only(
                 &app2,
                 &id2,
@@ -358,8 +364,7 @@ fn maybe_backfill_coreml_encoder(
                     return;
                 }
                 Err(e) => {
-                    if attempt < BACKOFF_SECS.len() {
-                        let wait = BACKOFF_SECS[attempt];
+                    if let Some(wait) = backoff {
                         log::warn!(
                             "CoreML encoder backfill attempt {} for {} failed: {}. \
                              Retrying in {}s.",

@@ -95,8 +95,8 @@ const SEARCH_INDEX: { section: SectionId; label: string; keywords: string }[] = 
   },
   {
     section: 'language',
-    label: 'Language',
-    keywords: 'language locale auto-detect english multilingual',
+    label: 'Language and translation',
+    keywords: 'translation output target language locale auto-detect english multilingual',
   },
   {
     section: 'activation',

@@ -60,6 +60,8 @@ pub struct UserSettings {
     pub activation_mode: ActivationMode,
     /// Language for transcription (None = auto-detect)
     pub language: Option<String>,
+    /// Output translation language (None = keep the spoken language).
+    pub translation_language: Option<String>,
     /// Selected model identifier (e.g. "base.en")
     pub selected_model: Option<String>,
     /// Whether to auto-start on login
@@ -138,6 +140,7 @@ impl Default for UserSettings {
         Self {
             activation_mode: ActivationMode::HoldFn,
             language: None,
+            translation_language: None,
             selected_model: None,
             auto_start: false,
             filler_words: vec![

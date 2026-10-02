@@ -36,7 +36,8 @@
     "rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test": "pnpm run rust:test",
-    "verify": "pnpm run rust:fmt:check && pnpm run rust:clippy && pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run rust:test"
+    "verify": "pnpm run rust:fmt:check && pnpm run rust:clippy && pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test:captions && pnpm run rust:test",
+    "test:captions": "node --test scripts/test-captions.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",

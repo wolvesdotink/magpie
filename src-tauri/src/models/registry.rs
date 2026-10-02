@@ -115,7 +115,7 @@ pub fn get_available_models() -> Vec<ModelInfo> {
             description:
                 "Distilled Whisper Small — similar accuracy to Small at higher speed. English only."
                     .to_string(),
-            size_bytes: 352_321_536, // ~336 MB
+            size_bytes: 336_191_657, // ~321 MB
             url: format!("{}/ggml-distil-small.en.bin", DISTIL_WHISPER_SMALL_EN_BASE),
             english_only: true,
             speed_rating: 2,
@@ -131,10 +131,24 @@ pub fn get_available_models() -> Vec<ModelInfo> {
             description:
                 "Distilled Whisper Large v3 — near-best English accuracy at Turbo-class speed."
                     .to_string(),
-            size_bytes: 1_632_087_572, // ~1.52 GB
+            size_bytes: 1_519_521_155, // ~1.42 GB
             url: format!("{}/ggml-distil-large-v3.bin", DISTIL_WHISPER_LARGE_V3_BASE),
             english_only: true,
             speed_rating: 4,
+            accuracy_rating: 5,
+            encoder_url: None,
+            encoder_size_bytes: None,
+            recommended_for: None,
+        },
+        ModelInfo {
+            id: "distil-large-v3.5".to_string(),
+            filename: "ggml-distil-large-v3.5.bin".to_string(),
+            display_name: "Distil Large v3.5 (English)".to_string(),
+            description: "Newer English distillation with improved short-form accuracy. Metal accelerated.".to_string(),
+            size_bytes: 1_519_521_155,
+            url: "https://huggingface.co/distil-whisper/distil-large-v3.5-ggml/resolve/main/ggml-model.bin".to_string(),
+            english_only: true,
+            speed_rating: 3,
             accuracy_rating: 5,
             encoder_url: None,
             encoder_size_bytes: None,
@@ -214,6 +228,34 @@ pub fn get_available_models() -> Vec<ModelInfo> {
             encoder_url: Some(ggerganov_encoder("large-v3-turbo")),
             encoder_size_bytes: Some(1_256_390_656), // ~1.17 GB
             recommended_for: Some("multilingual".to_string()),
+        },
+        ModelInfo {
+            id: "large-v3-turbo-q5_0".to_string(),
+            filename: "ggml-large-v3-turbo-q5_0.bin".to_string(),
+            display_name: "Large v3 Turbo Q5 (Multilingual)".to_string(),
+            description: "Compact Turbo weights for lower memory use. Metal accelerated; quality may differ from full precision.".to_string(),
+            size_bytes: 574_041_195,
+            url: format!("{}/ggml-large-v3-turbo-q5_0.bin", MODEL_BASE_URL),
+            english_only: false,
+            speed_rating: 4,
+            accuracy_rating: 4,
+            encoder_url: None,
+            encoder_size_bytes: None,
+            recommended_for: None,
+        },
+        ModelInfo {
+            id: "large-v3-q5_0".to_string(),
+            filename: "ggml-large-v3-q5_0.bin".to_string(),
+            display_name: "Large v3 Q5 (Multilingual)".to_string(),
+            description: "Compact Large v3 weights for multilingual accuracy with lower memory use. Metal accelerated.".to_string(),
+            size_bytes: 1_081_140_203,
+            url: format!("{}/ggml-large-v3-q5_0.bin", MODEL_BASE_URL),
+            english_only: false,
+            speed_rating: 5,
+            accuracy_rating: 5,
+            encoder_url: None,
+            encoder_size_bytes: None,
+            recommended_for: None,
         },
         ModelInfo {
             id: "large-v3".to_string(),
