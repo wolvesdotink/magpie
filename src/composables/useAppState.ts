@@ -9,6 +9,8 @@ import {
   onAppStateChanged,
   onCorrectionStarted,
   onCorrectionComplete,
+  onTranslationStarted,
+  onTranslationComplete,
   onAudioAmplitude,
   onPartialTranscription,
   onModelLoading,
@@ -23,6 +25,7 @@ export function useAppState() {
   const hasModel = ref(false);
   const lastTranscription = ref('');
   const correcting = ref(false);
+  const translating = ref(false);
   // True while a Memory Saver lazy model load is in flight — drives the
   // overlay's "Preparing model" label so a cold start doesn't look stuck.
   const loadingModel = ref(false);
@@ -78,6 +81,8 @@ export function useAppState() {
           errorTimer = null;
         }
         recordingGeneration.value++;
+        translating.value = false;
+        correcting.value = false;
         // New recording wipes any leftover partial caption from the prior session.
         partialText.value = '';
         // A fresh session clears any stale "preparing model" state.
@@ -107,6 +112,16 @@ export function useAppState() {
     unlisteners.push(
       await onCorrectionComplete(() => {
         correcting.value = false;
+        translating.value = false;
+      }),
+    );
+
+    unlisteners.push(
+      await onTranslationStarted(() => {
+        translating.value = true;
+      }),
+      await onTranslationComplete(() => {
+        translating.value = false;
       }),
     );
 
@@ -114,6 +129,7 @@ export function useAppState() {
       await onTranscriptionComplete((result: TranscriptionResult) => {
         processing.value = false;
         correcting.value = false;
+        translating.value = false;
         loadingModel.value = false;
         lastTranscription.value = result.text;
         // Final result has replaced the live preview — clear so the
@@ -124,7 +140,7 @@ export function useAppState() {
 
     unlisteners.push(
       await onPartialTranscription((data) => {
-        partialText.value = data.partial;
+        if (recording.value) partialText.value = data.partial;
       }),
     );
 
@@ -138,6 +154,7 @@ export function useAppState() {
       await onTranscriptionError((err) => {
         processing.value = false;
         correcting.value = false;
+        translating.value = false;
         loadingModel.value = false;
         // Drop any stale partial caption — a failed final pass means the
         // preview text is no longer the user's intended output.
@@ -174,6 +191,7 @@ export function useAppState() {
     recording,
     processing,
     correcting,
+    translating,
     loadingModel,
     hasModel,
     lastTranscription,

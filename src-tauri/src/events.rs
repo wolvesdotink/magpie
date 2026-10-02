@@ -16,6 +16,8 @@ pub mod event_names {
     pub const PERMISSIONS_STATUS: &str = "permissions-status";
     pub const CORRECTION_STARTED: &str = "correction-started";
     pub const CORRECTION_COMPLETE: &str = "correction-complete";
+    pub const TRANSLATION_STARTED: &str = "translation-started";
+    pub const TRANSLATION_COMPLETE: &str = "translation-complete";
     pub const AUDIO_AMPLITUDE: &str = "audio-amplitude";
     pub const VOCABULARY_LEARNED: &str = "vocabulary-learned";
     pub const STYLES_CHANGED: &str = "styles-changed";

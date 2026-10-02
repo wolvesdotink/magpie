@@ -53,6 +53,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck (vue-tsc)
         run: pnpm run typecheck
+      - name: Caption regression tests
+        run: pnpm run test:captions
       - name: ESLint
         run: pnpm run lint
       - name: Prettier check

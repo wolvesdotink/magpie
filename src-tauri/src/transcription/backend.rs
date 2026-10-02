@@ -36,6 +36,13 @@ pub enum TranscribeMode {
     PartialPreview,
 }
 
+/// Frozen per recording, shared by live captions and final output.
+#[derive(Clone, Default)]
+pub struct RecordingLanguages {
+    pub source: Option<String>,
+    pub target: Option<String>,
+}
+
 /// Inputs to a single transcription call. Borrows so the streaming worker
 /// (which runs the same options every cycle) doesn't pay for clones.
 pub struct TranscribeOptions<'a> {
@@ -47,6 +54,8 @@ pub struct TranscribeOptions<'a> {
 pub struct TranscribeOutput {
     pub text: String,
     pub duration_ms: u64,
+    /// Source language reported by the audio model, including auto-detect.
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]

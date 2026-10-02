@@ -10,7 +10,8 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::sampling::LlamaSampler;
 
 use crate::constants;
-use crate::correction::{CorrectionError, Result};
+use crate::correction::{response, translation, CorrectionError, Result};
+use crate::transcription::backend::CancellationToken;
 
 /// Map any `Display`-able llama_cpp_2 error into `CorrectionError::Inference`
 /// with a contextual prefix.
@@ -234,21 +235,81 @@ pub fn correct_transcription_with_prompt(
     text: &str,
     system_prompt: &str,
 ) -> Result<String> {
-    let start = std::time::Instant::now();
-
+    if text.trim().is_empty() {
+        return Ok(text.to_string());
+    }
     let trimmed = system_prompt.trim();
-    if trimmed.is_empty() {
-        log::warn!("Empty correction system prompt; using original text");
+    if trimmed.is_empty() || trimmed.len() > CUSTOM_PROMPT_MAX_CHARS {
         return Ok(text.to_string());
     }
-    if trimmed.len() > CUSTOM_PROMPT_MAX_CHARS {
-        log::warn!(
-            "Correction system prompt exceeds {} chars; using original text",
-            CUSTOM_PROMPT_MAX_CHARS
-        );
+    let result = generate_text(
+        backend,
+        model,
+        text,
+        trimmed,
+        false,
+        &CancellationToken::new(),
+    )?;
+    if !validate_correction(text, &result) {
+        log::warn!("Correction failed validation, using original text");
         return Ok(text.to_string());
     }
+    Ok(result)
+}
 
+/// Translation deliberately does not use correction's word-overlap validator:
+/// equivalent sentences in two languages normally have no shared words.
+/// A failed or interrupted chunk fails the entire operation.
+pub fn translate_transcription(
+    backend: &LlamaBackend,
+    model: &LlamaModel,
+    text: &str,
+    target: &str,
+    cancel: &CancellationToken,
+) -> Result<String> {
+    let prompt = translation::system_prompt(target)
+        .ok_or_else(|| CorrectionError::Inference("Unsupported translation language".into()))?;
+    if text.trim().is_empty() {
+        return Ok(String::new());
+    }
+    let mut result = String::new();
+    for chunk in translation::chunks(text, 400) {
+        let content = chunk.trim();
+        if content.is_empty() {
+            result.push_str(chunk);
+            continue;
+        }
+        let translated = generate_text(backend, model, content, &prompt, true, cancel)?;
+        let leading = &chunk[..chunk.len() - chunk.trim_start().len()];
+        let trailing = &chunk[chunk.trim_end().len()..];
+        if !result.is_empty()
+            && leading.is_empty()
+            && !result.ends_with(char::is_whitespace)
+            && !matches!(target, "zh" | "ja")
+        {
+            result.push(' ');
+        }
+        result.push_str(leading);
+        result.push_str(&translated);
+        result.push_str(trailing);
+    }
+    Ok(result.trim().to_string())
+}
+
+fn generate_text(
+    backend: &LlamaBackend,
+    model: &LlamaModel,
+    text: &str,
+    system_prompt: &str,
+    translating: bool,
+    cancel: &CancellationToken,
+) -> Result<String> {
+    let start = std::time::Instant::now();
+    if cancel.is_cancelled() {
+        return Err(CorrectionError::Inference(
+            "Text generation cancelled".into(),
+        ));
+    }
     // Hybrid thinking models (Qwen3/Qwen3.5) emit a reasoning block before
     // the answer unless the assistant turn is pre-filled with an empty
     // `<think>` block — their chat template does this when thinking is
@@ -264,11 +325,12 @@ pub fn correct_transcription_with_prompt(
 
     let prompt = format!(
         "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}{}<|im_end|>\n<|im_start|>assistant\n{}",
-        trimmed, USER_PROMPT_PREFIX, text, assistant_prefill
+        system_prompt, if translating { "" } else { USER_PROMPT_PREFIX }, text, assistant_prefill
     );
 
     let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(NonZeroU32::new(2048))
+        .with_n_ctx(NonZeroU32::new(4096))
+        .with_n_batch(512)
         .with_n_threads(constants::llm_threads())
         .with_n_threads_batch(constants::llm_threads());
 
@@ -285,7 +347,16 @@ pub fn correct_transcription_with_prompt(
         .str_to_token(text, llama_cpp_2::model::AddBos::Never)
         .unwrap_or_default()
         .len();
-    let max_new_tokens = ((input_text_tokens as f32) * 1.1 + 16.0) as usize;
+    let max_new_tokens = if translating {
+        input_text_tokens.saturating_mul(3).saturating_add(128)
+    } else {
+        ((input_text_tokens as f32) * 1.1 + 16.0) as usize
+    };
+    if n_prompt + max_new_tokens > 4096 {
+        return Err(CorrectionError::Inference(
+            "Text exceeds the model context budget".into(),
+        ));
+    }
 
     log::debug!(
         "Correction prompt: {} tokens, max new tokens: {}",
@@ -293,33 +364,48 @@ pub fn correct_transcription_with_prompt(
         max_new_tokens
     );
 
-    let mut batch = LlamaBatch::new(n_prompt.max(1), 1);
-    for (i, &token) in tokens.iter().enumerate() {
-        let is_last = i == n_prompt - 1;
-        batch
-            .add(token, i as i32, &[0], is_last)
-            .map_err(inference_err("add token to batch"))?;
+    let mut batch = LlamaBatch::new(512, 1);
+    for (chunk_index, chunk) in tokens.chunks(512).enumerate() {
+        if cancel.is_cancelled() {
+            return Err(CorrectionError::Inference(
+                "Text generation cancelled".into(),
+            ));
+        }
+        batch.clear();
+        for (offset, &token) in chunk.iter().enumerate() {
+            let position = chunk_index * 512 + offset;
+            batch
+                .add(token, position as i32, &[0], position == n_prompt - 1)
+                .map_err(inference_err("add token to batch"))?;
+        }
+        ctx.decode(&mut batch)
+            .map_err(inference_err("decode prompt batch"))?;
     }
-    ctx.decode(&mut batch)
-        .map_err(inference_err("decode prompt batch"))?;
 
     let mut sampler = LlamaSampler::chain_simple([LlamaSampler::temp(0.1), LlamaSampler::dist(42)]);
 
-    let mut output_pieces: Vec<String> = Vec::new();
+    let mut output_bytes: Vec<u8> = Vec::new();
     let mut n_cur = n_prompt;
+    let mut finished = false;
 
     for _ in 0..max_new_tokens {
+        if cancel.is_cancelled() {
+            return Err(CorrectionError::Inference(
+                "Text generation cancelled".into(),
+            ));
+        }
         let new_token = sampler.sample(&ctx, batch.n_tokens() - 1);
 
         if model.is_eog_token(new_token) {
+            finished = true;
             break;
         }
 
         #[allow(deprecated)]
         let piece = model
-            .token_to_str(new_token, Special::Plaintext)
-            .unwrap_or_default();
-        output_pieces.push(piece);
+            .token_to_bytes(new_token, Special::Plaintext)
+            .map_err(inference_err("decode generated token bytes"))?;
+        output_bytes.extend_from_slice(&piece);
 
         batch.clear();
         batch
@@ -330,20 +416,16 @@ pub fn correct_transcription_with_prompt(
         n_cur += 1;
     }
 
-    let result = output_pieces.join("").trim().to_string();
-    log::info!("Correction took {:?}", start.elapsed());
-
-    if result.is_empty() {
-        log::warn!("Correction produced empty text, using original");
-        return Ok(text.to_string());
+    log::debug!("Local text generation took {:?}", start.elapsed());
+    if !finished {
+        return Err(CorrectionError::Inference(
+            "Text generation reached its output limit".into(),
+        ));
     }
-
-    if !validate_correction(text, &result) {
-        log::warn!("Correction failed validation, using original text");
-        return Ok(text.to_string());
-    }
-
-    Ok(result)
+    let output =
+        String::from_utf8(output_bytes).map_err(inference_err("decode generated UTF-8"))?;
+    response::clean_response(&output)
+        .ok_or_else(|| CorrectionError::Inference("Model returned no usable text".into()))
 }
 
 fn validate_correction(original: &str, corrected: &str) -> bool {

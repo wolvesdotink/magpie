@@ -136,6 +136,14 @@ export function onCorrectionComplete(callback: () => void): Promise<UnlistenFn> 
   return listen('correction-complete', callback);
 }
 
+export function onTranslationStarted(callback: () => void): Promise<UnlistenFn> {
+  return listen('translation-started', callback);
+}
+
+export function onTranslationComplete(callback: () => void): Promise<UnlistenFn> {
+  return listen('translation-complete', callback);
+}
+
 export function onAudioAmplitude(
   callback: (data: AudioAmplitudePayload) => void,
 ): Promise<UnlistenFn> {

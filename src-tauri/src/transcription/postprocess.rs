@@ -81,12 +81,33 @@ pub fn postprocess_legacy(
 fn remove_filler_words(text: &str, fillers: &[String]) -> String {
     let mut result = text.to_string();
     for filler in fillers {
+        if filler.trim().is_empty() {
+            continue;
+        }
         let pattern = format!(r"(?i)\b{}\b,?\s*", regex::escape(filler));
         if let Ok(re) = Regex::new(&pattern) {
             result = re.replace_all(&result, " ").to_string();
         }
     }
     result
+}
+
+/// Older settings persist the original English default list. Interpret that
+/// list as language defaults; any different list (including empty) remains an
+/// explicit override. Unknown languages get only conservative hesitation tokens.
+pub fn fillers_for_language(configured: &[String], language: Option<&str>) -> Vec<String> {
+    let legacy = ["um", "uh", "hmm", "mm", "ah", "er"];
+    if !configured.iter().map(String::as_str).eq(legacy) {
+        return configured.to_vec();
+    }
+    let mut fillers = vec!["uh", "uhm", "umm", "uhh", "hmm"];
+    match language.and_then(|s| s.split(['-', '_']).next()) {
+        Some("en") => fillers.extend(["um", "ah", "er"]),
+        Some("de") => fillers.extend(["äh", "ähm"]),
+        Some("fr") => fillers.push("euh"),
+        _ => {}
+    }
+    fillers.into_iter().map(str::to_string).collect()
 }
 
 fn normalize_whitespace(text: &str) -> String {
@@ -206,6 +227,30 @@ mod tests {
         vocab: &[(String, String)],
     ) -> String {
         postprocess(text, fillers, remove_fillers, vocab, &default_rules(), &[])
+    }
+
+    #[test]
+    fn multilingual_defaults_preserve_lexical_words_and_units() {
+        let configured = crate::settings::UserSettings::default().filler_words;
+        let de = fillers_for_language(&configured, Some("de"));
+        assert_eq!(
+            pp("Wir treffen uns um acht, 5 mm Abstand.", &de, true, &[]),
+            "Wir treffen uns um acht, 5 mm Abstand."
+        );
+        let pt = fillers_for_language(&configured, Some("pt"));
+        assert_eq!(pp("um livro", &pt, true, &[]), "Um livro");
+        let unknown = fillers_for_language(&configured, None);
+        assert_eq!(pp("um livro", &unknown, true, &[]), "Um livro");
+        let en = fillers_for_language(&configured, Some("en-US"));
+        assert_eq!(pp("um hello uh world", &en, true, &[]), "Hello world");
+    }
+
+    #[test]
+    fn custom_filler_list_is_an_explicit_override() {
+        let custom = vec!["um".to_string()];
+        assert_eq!(fillers_for_language(&custom, Some("de")), custom);
+        assert!(fillers_for_language(&[], Some("en")).is_empty());
+        assert_eq!(pp("hello world", &["".into()], true, &[]), "Hello world");
     }
 
     #[test]

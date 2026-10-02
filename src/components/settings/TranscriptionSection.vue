@@ -260,14 +260,14 @@ onUnmounted(() => {
       />
     </SettingsRow>
 
-    <template v-if="settings?.selfCorrection">
+    <template v-if="settings?.selfCorrection || settings?.translationLanguage">
       <BaseCard
         v-if="downloadedCorrectionModels.length === 0 && !downloadingCorrection"
         tone="gold"
         class="mt-2"
       >
         <span class="text-[10px] text-gold leading-snug">
-          Download a correction model below to enable self-correction cleanup.
+          Download a language model below for cleanup or translation.
         </span>
       </BaseCard>
 
@@ -296,7 +296,7 @@ onUnmounted(() => {
 
       <div v-if="downloadedCorrectionModels.length > 0" class="mt-2">
         <span class="text-[10px] font-semibold text-ink-faint tracking-[0.02em]">
-          Correction models
+          Language models
         </span>
         <div class="flex flex-col gap-1.5 mt-1.5">
           <div

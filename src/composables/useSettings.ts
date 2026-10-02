@@ -85,6 +85,12 @@ async function updateLanguage(code: string) {
   await persist();
 }
 
+async function updateTranslationLanguage(code: string | null) {
+  if (!settings.value) return;
+  settings.value = { ...settings.value, translationLanguage: code };
+  await persist();
+}
+
 async function updateActivationMode(mode: 'holdFn' | 'tapFn' | 'doubleTapFn' | 'shortcut') {
   if (!settings.value) return;
   settings.value = { ...settings.value, activationMode: mode };
@@ -216,6 +222,7 @@ export function useSettings() {
     launchAtLoginStatus,
     openLoginItemsSettings,
     updateLanguage,
+    updateTranslationLanguage,
     updateActivationMode,
     updateCustomShortcut,
     updateAutoStart,

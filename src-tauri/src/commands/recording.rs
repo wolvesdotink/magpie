@@ -31,7 +31,9 @@ use crate::overlay;
 use crate::resolver;
 use crate::state::{lock_or_recover, AppState};
 use crate::styles::CorrectionOverride;
-use crate::transcription::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
+use crate::transcription::backend::{
+    CancellationToken, RecordingLanguages, TranscribeMode, TranscribeOptions,
+};
 use crate::transcription::postprocess;
 use crate::transcription::streaming;
 use crate::tray::{self, TrayState};
@@ -67,6 +69,14 @@ pub async fn start_recording(
     }
 
     let state_arc = state.inner().clone();
+    let languages = {
+        let settings = lock_or_recover(&state.settings);
+        RecordingLanguages {
+            source: settings.language.clone(),
+            target: settings.translation_language.clone(),
+        }
+    };
+    *lock_or_recover(&state.recording_languages) = languages.clone();
 
     // Capture frontmost app BEFORE the audio stream opens so we can attribute
     // this recording's profile + vocabulary learning to wherever the user's
@@ -114,18 +124,22 @@ pub async fn start_recording(
         });
     }
 
+    if languages.target.is_some() {
+        let preload_state = state_arc.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::model_loading::ensure_correction_loaded(&preload_state);
+        });
+    }
+
     // Spawn the streaming-preview worker. It will poll the audio buffer
     // every ~300 ms and emit PARTIAL_TRANSCRIPTION events the overlay can
-    // render as a live caption. Skip if no backend is loaded — there's
-    // nothing to decode against — or if the user has disabled the live
+    // render as a live caption. It waits for a cold backend load. Skip if
+    // the user has disabled the live
     // preview in Settings (default off; final-on-stop is unaffected).
-    let backend_present = lock_or_recover(&state.backend).is_some();
     let streaming_enabled = lock_or_recover(&state.settings).streaming_preview;
-    if backend_present && streaming_enabled {
+    if streaming_enabled {
         let handle = streaming::spawn_streaming_worker(app.clone(), state_arc.clone());
         *lock_or_recover(&state.streaming_handle) = Some(handle);
-    } else if !backend_present {
-        log::info!("Streaming worker not started: no backend loaded");
     } else {
         log::info!("Streaming worker not started: live preview disabled in settings");
     }
@@ -205,28 +219,21 @@ pub async fn stop_recording(
 
     state.set_recording(false);
 
-    // Tear down the streaming worker BEFORE flipping `processing` so a
-    // stale partial can't race the final pass. partial_cancel aborts the
-    // in-flight whisper.cpp call (via the abort_callback wired in the
-    // backend); cancel signals the loop to exit. The 2s timeout bounds
-    // the wait if a stuck inference somehow ignores the abort.
+    // Give immediate stop feedback and prevent another recording while the
+    // preview worker is settling. Cancelled results are dropped before emit.
+    state.set_processing(true);
+    tray::set_tray_icon(&app, TrayState::Processing);
+    tray::set_tray_status(&app, "Magpie — Transcribing...");
+    unregister_escape_shortcut(&app);
+    events::emit_event(&app, event_names::RECORDING_STOPPED, ());
+    events::emit_event(&app, event_names::TRANSCRIPTION_STARTED, ());
+
     let streaming_handle = lock_or_recover(&state.streaming_handle).take();
     if let Some(h) = streaming_handle {
         h.partial_cancel.cancel();
         h.cancel.cancel();
         let _ = tokio::time::timeout(std::time::Duration::from_millis(2000), h.join).await;
     }
-
-    state.set_processing(true);
-    tray::set_tray_icon(&app, TrayState::Processing);
-    tray::set_tray_status(&app, "Magpie — Transcribing...");
-
-    // Escape only cancels during the recording phase. Once we cross into
-    // transcription, release the binding so the key behaves normally again.
-    unregister_escape_shortcut(&app);
-
-    events::emit_event(&app, event_names::RECORDING_STOPPED, ());
-    events::emit_event(&app, event_names::TRANSCRIPTION_STARTED, ());
 
     // Snapshot the audio under a brief lock, then clear so the next
     // recording starts clean. The ring buffer may have evicted older
@@ -267,10 +274,9 @@ pub async fn stop_recording(
 
         // Get language setting (needed before resolver call, which doesn't
         // touch language).
-        let language = {
-            let settings = lock_or_recover(&state_arc.settings);
-            settings.language.clone()
-        };
+        let languages = lock_or_recover(&state_arc.recording_languages).clone();
+        let language = languages.source;
+        let translation_language = languages.target;
 
         // Resolve effective configuration (profile match → style + vocab merge
         // + compiled custom rules + correction override).
@@ -362,16 +368,32 @@ pub async fn stop_recording(
                     // Post-process with style-resolved formatting + custom rules.
                     let filler_words = {
                         let settings = lock_or_recover(&state_arc.settings);
-                        settings.filler_words.clone()
+                        postprocess::fillers_for_language(
+                            &settings.filler_words,
+                            out.language.as_deref(),
+                        )
                     };
 
+                    let source_formatting = if translation_language.is_some() {
+                        crate::styles::FormattingRules {
+                            casing: crate::styles::CasingMode::Preserve,
+                            collapse_whitespace: false,
+                            ..Default::default()
+                        }
+                    } else {
+                        formatting.clone()
+                    };
                     let text = postprocess::postprocess(
                         &raw_text,
                         &filler_words,
                         resolved_remove_fillers,
                         &vocab_replacements,
-                        &formatting,
-                        &compiled_transforms,
+                        &source_formatting,
+                        if translation_language.is_some() {
+                            &[]
+                        } else {
+                            &compiled_transforms
+                        },
                     );
 
                     // Self-correction cleanup. Honors the style's CorrectionOverride:
@@ -503,6 +525,59 @@ pub async fn stop_recording(
                         }
                     };
 
+                    let text = if let Some(target) = translation_language.as_deref() {
+                        if text.is_empty() {
+                            text
+                        } else {
+                            events::emit_event(&app_clone, event_names::TRANSLATION_STARTED, ());
+                            crate::model_loading::ensure_correction_loaded(&state_arc);
+                            let backend = lock_or_recover(&state_arc.llama_backend);
+                            let model = lock_or_recover(&state_arc.correction_model);
+                            let translated = match (&*backend, &*model) {
+                                (Some(backend), Some(model)) => {
+                                    correction::engine::translate_transcription(
+                                        backend,
+                                        model,
+                                        &text,
+                                        target,
+                                        &CancellationToken::new(),
+                                    )
+                                }
+                                _ => Err(correction::CorrectionError::NotLoaded),
+                            };
+                            drop(model);
+                            drop(backend);
+                            events::emit_event(&app_clone, event_names::TRANSLATION_COMPLETE, ());
+                            match translated {
+                                Ok(translated) => postprocess::postprocess(
+                                    &translated,
+                                    &[],
+                                    false,
+                                    &[],
+                                    &formatting,
+                                    &compiled_transforms,
+                                ),
+                                Err(e) => {
+                                    // Do not silently paste source text when translation was requested.
+                                    log::warn!("Translation failed: {}", e);
+                                    let message = match e {
+                                        correction::CorrectionError::NotLoaded => "Select a local language model in Transcription settings to translate.".to_string(),
+                                        other => format!("Translation failed: {other}. Your source transcript was kept; nothing was pasted."),
+                                    };
+                                    events::emit_event(
+                                        &app_clone,
+                                        event_names::TRANSCRIPTION_ERROR,
+                                        TranscriptionError { error: message },
+                                    );
+                                    had_error = true;
+                                    text
+                                }
+                            }
+                        }
+                    } else {
+                        text
+                    };
+
                     if !text.is_empty() {
                         // Store last transcription
                         {
@@ -534,33 +609,38 @@ pub async fn stop_recording(
                             events::emit_event(&app_clone, event_names::HISTORY_ENTRY_ADDED, ());
                         }
 
-                        // Paste into active app
-                        if let Err(e) = output::paste::paste_text(&app_clone, &text) {
-                            log::error!("Failed to paste text: {}", e);
-                        } else {
-                            log::info!("Pasted {} chars", text.len());
+                        // Preserve the source in history on translation failure, but never
+                        // paste it or report it as a successful translation.
+                        if !had_error {
+                            // Paste into active app
+                            if let Err(e) = output::paste::paste_text(&app_clone, &text) {
+                                log::error!("Failed to paste text: {}", e);
+                            } else {
+                                log::info!("Pasted {} chars", text.len());
 
-                            // Start correction detection if vocabulary learning is enabled
-                            // (style/profile override applied during resolution).
-                            if vocab_learning_enabled {
-                                let captured_app = {
-                                    let lock = lock_or_recover(&state_arc.current_recording_app);
-                                    lock.clone()
-                                };
-                                correction_detector::start_detection(
-                                    text.clone(),
-                                    state_arc.clone(),
-                                    app_clone.clone(),
-                                    captured_app,
-                                );
+                                // Start correction detection if vocabulary learning is enabled
+                                // (style/profile override applied during resolution).
+                                if vocab_learning_enabled && translation_language.is_none() {
+                                    let captured_app = {
+                                        let lock =
+                                            lock_or_recover(&state_arc.current_recording_app);
+                                        lock.clone()
+                                    };
+                                    correction_detector::start_detection(
+                                        text.clone(),
+                                        state_arc.clone(),
+                                        app_clone.clone(),
+                                        captured_app,
+                                    );
+                                }
                             }
-                        }
 
-                        events::emit_event(
-                            &app_clone,
-                            event_names::TRANSCRIPTION_COMPLETE,
-                            TranscriptionResult { text, duration_ms },
-                        );
+                            events::emit_event(
+                                &app_clone,
+                                event_names::TRANSCRIPTION_COMPLETE,
+                                TranscriptionResult { text, duration_ms },
+                            );
+                        }
                     } else {
                         log::info!("Transcription produced empty text after post-processing");
                         events::emit_event(

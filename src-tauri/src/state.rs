@@ -19,7 +19,7 @@ use crate::profiles::ProfilesStore;
 use crate::recording::RecordingCommand;
 use crate::settings::UserSettings;
 use crate::styles::StylesStore;
-use crate::transcription::backend::{CancellationToken, TranscriptionBackend};
+use crate::transcription::backend::{CancellationToken, RecordingLanguages, TranscriptionBackend};
 use crate::transcription::streaming::StreamingHandle;
 use crate::vocabulary::Vocabulary;
 
@@ -60,7 +60,7 @@ use crate::vocabulary::Vocabulary;
 /// 13. `pending_reload`
 /// 14. `fn_key_monitor`, `recording_tx`, `current_shortcut` (orchestration
 ///     handles; rarely held with anything else)
-/// 15. `current_recording_app` (set at recording start, read at resolution
+/// 15. `current_recording_app`, `recording_languages` (set at recording start, read at resolution
 ///     time; never held with anything else)
 ///
 /// The atomic fields (`recording`, `processing`, `amplitude_rms`,
@@ -126,6 +126,8 @@ pub struct AppState {
     /// recording end. Lower rank than vocabulary; written at recording start,
     /// read during transcription resolution and auto-learning attribution.
     pub current_recording_app: Mutex<Option<FrontmostApp>>,
+    /// Session language choices; same rank as current_recording_app.
+    pub recording_languages: Mutex<RecordingLanguages>,
     /// When true, the next `Focused(false)` event on the main window will
     /// NOT hide the window. Used when we intentionally launch an external
     /// app (e.g. System Preferences) that steals focus.
@@ -206,6 +208,7 @@ impl AppState {
             styles: Mutex::new(StylesStore::load()),
             profiles: Mutex::new(ProfilesStore::load()),
             current_recording_app: Mutex::new(None),
+            recording_languages: Mutex::new(RecordingLanguages::default()),
             suppress_hide: AtomicBool::new(false),
             fn_key_monitor: Mutex::new(None),
             recording_tx: Mutex::new(None),

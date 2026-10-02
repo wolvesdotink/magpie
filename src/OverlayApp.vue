@@ -10,6 +10,7 @@ const {
   recording,
   processing,
   correcting,
+  translating,
   loadingModel,
   transitionSource,
   recordingGeneration,
@@ -58,6 +59,7 @@ watch(loadingModel, (isLoading, was) => {
         <div v-else-if="processing" key="processing" class="pill-outer">
           <TranscribingPill
             :correcting="correcting"
+            :translating="translating"
             :loading="loadingModel"
             :generation="transcribingGeneration"
           />

@@ -218,7 +218,7 @@ impl TranscriptionBackend for WhisperBackend {
                 let partial_threads = (whisper_threads() / 2).max(2);
                 params.set_n_threads(partial_threads);
                 params.set_suppress_blank(true);
-                params.set_suppress_nst(false);
+                params.set_suppress_nst(true);
                 params.set_no_timestamps(true);
                 params.set_single_segment(true);
                 params.set_no_context(true);
@@ -273,6 +273,7 @@ impl TranscriptionBackend for WhisperBackend {
         Ok(TranscribeOutput {
             text: text.trim().to_string(),
             duration_ms,
+            language: whisper_rs::get_lang_str(state.full_lang_id_from_state()).map(str::to_string),
         })
     }
 }

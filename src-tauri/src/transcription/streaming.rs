@@ -12,7 +12,7 @@
 //! only on stop, in `commands.rs`, over the full clip.
 //!
 //! Cancellation is two-tiered: `partial_cancel` aborts the in-flight
-//! whisper.cpp call (via the abort_callback wired in `whisper_backend.rs`),
+//! local translation between tokens (Whisper is checked before/after decode),
 //! and `cancel` tells the loop to exit. `stop_recording` flips both so
 //! a stale partial can never race the final pass.
 
@@ -29,6 +29,7 @@ use crate::events::{self, event_names};
 use crate::state::{lock_or_recover, AppState};
 
 use super::backend::{CancellationToken, TranscribeMode, TranscribeOptions};
+use super::preview_gate::PreviewGate;
 
 const PARTIAL_INTERVAL_MS: u64 = 300;
 /// Skip partials until we have at least 1s of audio at 16kHz. Whisper hates
@@ -95,6 +96,13 @@ async fn run_loop(
     let mut src_cursor: u64 = 0;
     let mut resampler: Option<StreamingResampler> = None;
     let mut preview_pcm: Vec<f32> = Vec::new();
+    let mut gate = PreviewGate::default();
+    let mut last_source = String::new();
+    let mut last_emitted = String::new();
+    // Freeze language choices for this caption session.
+    let languages = lock_or_recover(&state.recording_languages).clone();
+    let language = languages.source;
+    let translation_language = languages.target;
     let mut tick = Instant::now() + Duration::from_millis(PARTIAL_INTERVAL_MS);
     let mut consecutive_empty: usize = 0;
     let mut empty_warned = false;
@@ -119,6 +127,9 @@ async fn run_loop(
         let Some(backend) = backend else {
             continue;
         };
+        if !backend.capabilities().supports_partial_decode {
+            break;
+        }
         let target_rate = backend.capabilities().sample_rate_hz;
 
         // Read sample rate, then pull just the audio that arrived since the
@@ -135,6 +146,9 @@ async fn run_loop(
             // possible if a decode stalled long enough for the buffer to
             // wrap past the cursor. The preview just carries a small seam
             // artifact at the gap; log and move on.
+            preview_pcm.clear();
+            resampler = None;
+            gate.reset();
             log::warn!(
                 "Partial worker fell behind ring buffer: {} samples dropped",
                 chunk_start - src_cursor
@@ -153,11 +167,13 @@ async fn run_loop(
         {
             resampler = Some(StreamingResampler::new(sample_rate, target_rate));
             preview_pcm.clear();
+            gate.reset();
         }
         let out = resampler
             .as_mut()
             .expect("resampler initialized above")
             .process(&chunk);
+        let should_decode = gate.should_decode(&out, target_rate);
         preview_pcm.extend_from_slice(&out);
 
         // Keep only the trailing decode window. The caption is transient UI
@@ -165,12 +181,10 @@ async fn run_loop(
         // cost and this buffer's memory regardless of recording length.
         trim_to_tail(&mut preview_pcm, PARTIAL_WINDOW_SECS * target_rate as usize);
 
-        if preview_pcm.len() < MIN_TOTAL_SAMPLES_AT_16K {
+        if !should_decode || preview_pcm.len() < target_rate as usize {
             continue;
         }
         let resampled = preview_pcm.clone();
-
-        let language = lock_or_recover(&state.settings).language.clone();
 
         if partial_cancel.is_cancelled() {
             break;
@@ -198,16 +212,63 @@ async fn run_loop(
         match result {
             Ok(Ok(out)) if !out.text.is_empty() => {
                 consecutive_empty = 0;
-                log::info!(
-                    "Partial worker emitting: \"{}\" ({}ms)",
-                    out.text,
-                    out.duration_ms
-                );
+                let source = out.text.trim().to_string();
+                if source.is_empty() || source == last_source {
+                    continue;
+                }
+                let caption = if let Some(target) = translation_language.as_deref() {
+                    let translation_state = state.clone();
+                    let source_owned = source.clone();
+                    let target_owned = target.to_string();
+                    let translation_cancel = partial_cancel.clone();
+                    let translated = tokio::task::spawn_blocking(move || {
+                        if translation_cancel.is_cancelled() {
+                            return None;
+                        }
+                        // A cold language model can still be warming after the
+                        // first audio decode. Wait once so a short utterance's
+                        // preview is not lost if speech ends before it loads.
+                        crate::model_loading::ensure_correction_loaded(&translation_state);
+                        if translation_cancel.is_cancelled() {
+                            return None;
+                        }
+                        // Never queue previews behind final correction/translation.
+                        let backend = translation_state.llama_backend.try_lock()?;
+                        let model = translation_state.correction_model.try_lock()?;
+                        crate::correction::engine::translate_transcription(
+                            backend.as_ref()?,
+                            model.as_ref()?,
+                            &source_owned,
+                            &target_owned,
+                            &translation_cancel,
+                        )
+                        .ok()
+                    })
+                    .await;
+                    if cancel.is_cancelled() || partial_cancel.is_cancelled() {
+                        break;
+                    }
+                    match translated {
+                        Ok(Some(text)) => text,
+                        _ => continue,
+                    }
+                } else {
+                    source.clone()
+                };
+                last_source = source;
+                if caption == last_emitted {
+                    continue;
+                }
+                last_emitted = caption.clone();
+                if translation_language.is_some() {
+                    tick = Instant::now() + Duration::from_millis(1200);
+                }
+                log::debug!("Partial caption ready ({}ms ASR)", out.duration_ms);
                 events::emit_event(
                     &app,
                     event_names::PARTIAL_TRANSCRIPTION,
                     PartialTranscriptionPayload {
-                        partial: out.text,
+                        partial: caption,
                         is_final: false,
                     },
                 );

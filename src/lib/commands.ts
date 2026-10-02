@@ -53,6 +53,8 @@ export interface PermissionsStatus {
 export interface UserSettings {
   activationMode: 'holdFn' | 'tapFn' | 'doubleTapFn' | 'shortcut';
   language: string | null;
+  /** Translation target; null preserves the spoken language. Requires a local language model. */
+  translationLanguage: string | null;
   selectedModel: string | null;
   autoStart: boolean;
   fillerWords: string[];
